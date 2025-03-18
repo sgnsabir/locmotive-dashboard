@@ -5,7 +5,8 @@ import Image from "next/image";
 import { FiMenu, FiBell, FiSearch } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "@/store";
-import { logout } from "@/store/authSlice";
+import { logout as logoutAction } from "@/store/authSlice";
+import { useRouter } from "next/router";
 
 const mockItems = [
   { id: "perf", label: "Performance Page", url: "/dashboard/performance" },
@@ -19,14 +20,35 @@ const Header = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<typeof mockItems>([]);
   const [hasUnread, setHasUnread] = useState(true);
-
   const user = useSelector((state: RootState) => state.auth.user);
   const dispatch = useDispatch<AppDispatch>();
+  const router = useRouter();
 
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
-  const handleLogout = () => {
-    dispatch(logout());
+  const handleLogout = async () => {
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (!response.ok) {
+          console.error("Logout API call failed:", response.status);
+        }
+      } catch (error) {
+        console.error("Logout error:", error);
+      }
+    }
+    // Clear authentication state
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("username");
+    dispatch(logoutAction());
+    router.push("/login");
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,7 +170,7 @@ const Header = () => {
           <ul className="space-y-2">
             {[
               { label: "Home (Dashboard)", href: "/" },
-              // You can add more mobile-specific nav items if needed
+              // Additional mobile nav items can be added here
             ].map((item) => (
               <li key={item.href}>
                 <Link
