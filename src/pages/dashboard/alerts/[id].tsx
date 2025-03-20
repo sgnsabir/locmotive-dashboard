@@ -1,4 +1,5 @@
 // src/pages/dashboard/alerts/[id].tsx
+
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { getAlertById } from "@/api/alerts";
@@ -7,18 +8,23 @@ import { AlertResponse } from "@/types/alert";
 const AlertDetail: React.FC = () => {
   const router = useRouter();
   const { id } = router.query;
+
   const [alert, setAlert] = useState<AlertResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAlert = async (alertId: number) => {
+  const fetchAlert = async (alertId: number): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAlertById(alertId);
+      const data: AlertResponse = await getAlertById(alertId);
       setAlert(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load alert details.");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Failed to load alert details.");
+      }
     } finally {
       setLoading(false);
     }
@@ -67,14 +73,14 @@ const AlertDetail: React.FC = () => {
           <strong>Subject:</strong> {alert.subject}
         </p>
         <p>
-          <strong>Severity:</strong> {alert.severity}
-        </p>
-        <p>
           <strong>Message:</strong> {alert.text}
         </p>
         <p>
           <strong>Timestamp:</strong>{" "}
           {new Date(alert.timestamp).toLocaleString()}
+        </p>
+        <p>
+          <strong>Acknowledged:</strong> {alert.acknowledged ? "Yes" : "No"}
         </p>
       </div>
     </div>
