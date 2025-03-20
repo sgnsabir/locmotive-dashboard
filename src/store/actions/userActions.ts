@@ -1,77 +1,65 @@
-// store/actions/userActions.ts
+// src/store/actions/userActions.ts
 import { Dispatch } from "redux";
-import { UserState } from "../reducers/userReducer";
+import { API_BASE_URL, handleResponse } from "@/api/apiHelper";
+import { getAllUsers, deleteUser as apiDeleteUser } from "@/api/userManagement";
+import type { UserResponse } from "@/types/auth";
+import { UserData } from "@/types/user";
 
-export interface UserData {
-  username: string;
-  email: string;
-  role: string;
-}
-
-// Example existing user
-export interface User {
-  user_id: number;
-  username: string;
-  email: string;
-  role: string;
-  avatar?: string;
-  twoFactorEnabled?: boolean;
-  phone?: string;
-}
-
-export const fetchUsers = () => (dispatch: Dispatch) => {
+// Action to fetch all users from the backend
+export const fetchUsers = () => async (dispatch: Dispatch) => {
   dispatch({ type: "FETCH_USERS_REQUEST" });
   try {
-    // Mock data
-    const mockUsers: User[] = [
-      {
-        user_id: 1,
-        username: "admin",
-        email: "admin@example.com",
-        role: "admin",
-      },
-      {
-        user_id: 2,
-        username: "john",
-        email: "john@example.com",
-        role: "operator",
-      },
-    ];
-    // In real app: fetch from API
+    const users: UserResponse[] = await getAllUsers();
     dispatch({
       type: "FETCH_USERS_SUCCESS",
-      payload: {
-        users: mockUsers,
-        total: mockUsers.length,
-      },
+      payload: { users, total: users.length },
     });
-  } catch (err: any) {
-    dispatch({ type: "FETCH_USERS_FAILURE", payload: err.message });
+  } catch (error: unknown) {
+    let message = "Failed to fetch users";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    dispatch({ type: "FETCH_USERS_FAILURE", payload: message });
   }
 };
 
-export const createUser = (userData: UserData) => (dispatch: Dispatch) => {
-  dispatch({ type: "CREATE_USER_REQUEST" });
-  try {
-    // Fake create
-    const newUser: User = {
-      user_id: Math.floor(Math.random() * 1000),
-      username: userData.username,
-      email: userData.email,
-      role: userData.role,
-    };
-    dispatch({ type: "CREATE_USER_SUCCESS", payload: newUser });
-  } catch (err: any) {
-    dispatch({ type: "CREATE_USER_FAILURE", payload: err.message });
-  }
-};
+// Action to create a new user using the backend API
+export const createUser =
+  (userData: UserData) => async (dispatch: Dispatch) => {
+    dispatch({ type: "CREATE_USER_REQUEST" });
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        credentials: "include",
+        body: JSON.stringify(userData),
+      });
+      const newUser = await handleResponse<UserResponse>(response);
+      dispatch({ type: "CREATE_USER_SUCCESS", payload: newUser });
+    } catch (error: unknown) {
+      let message = "Failed to create user";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      dispatch({ type: "CREATE_USER_FAILURE", payload: message });
+    }
+  };
 
-export const deleteUser = (userId: number) => (dispatch: Dispatch) => {
+// Action to delete a user using the backend API
+export const deleteUser = (userId: number) => async (dispatch: Dispatch) => {
   dispatch({ type: "DELETE_USER_REQUEST" });
   try {
-    // Fake delete
+    await apiDeleteUser(userId);
     dispatch({ type: "DELETE_USER_SUCCESS", payload: userId });
-  } catch (err: any) {
-    dispatch({ type: "DELETE_USER_FAILURE", payload: err.message });
+  } catch (error: unknown) {
+    let message = "Failed to delete user";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    dispatch({ type: "DELETE_USER_FAILURE", payload: message });
   }
 };

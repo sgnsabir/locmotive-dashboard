@@ -1,42 +1,3 @@
-// src/api/apiTypes.ts
-
-export interface LoginResponse {
-  token: string;
-  username: string;
-  expiresIn: number;
-}
-
-export interface AlertResponse {
-  id: number;
-  subject: string;
-  text: string;
-  timestamp: string;
-  acknowledged: boolean;
-}
-
-export interface PerformanceDTO {
-  timestamp: string;
-  speed: number;
-  acceleration: number | null;
-}
-
-export interface PredictiveMaintenanceResponse {
-  analysisId: number;
-  averageSpeed: number;
-  speedVariance: number;
-  averageAoa: number;
-  averageVibration: number;
-  averageVerticalForce: number;
-  averageLateralForce: number;
-  averageLateralVibration: number;
-  riskScore: number;
-  predictionMessage: string;
-}
-
-/**
- * SensorMetricsDTO defines the structure for aggregated sensor metrics.
- * This must match the backend DTO exactly.
- */
 export interface SensorMetricsDTO {
   analysisId: number;
   averageSpeed: number;
@@ -108,34 +69,7 @@ export interface SensorMetricsDTO {
   createdAt: string;
 }
 
-export interface HistoricalDataResponse {
-  analysisId: number;
-  metricsHistory: SensorMetricsDTO[];
-  page: number;
-  size: number;
-  totalRecords: number;
-  startTime: string;
-  endTime: string;
-}
-
-export interface TrackConditionDTO {
-  trainNo: number;
-  measurementTime: string;
-  lateralForceLeft: number;
-  lateralForceRight: number;
-  verticalForceLeft: number;
-  verticalForceRight: number;
-  highLateralForce: boolean;
-  highVerticalForce: boolean;
-  anomalyMessage: string;
-}
-
-/**
- * VirtualAssetDTO represents the digital twin state.
- */
-export interface VirtualAssetDTO {
-  assetId: number;
-  status: string;
-  updatedAt: string;
-  sensorSummary: string;
+export interface AggregatedMetricsResponse {
+  avgSpeed?: number;
+  error?: string;
 }

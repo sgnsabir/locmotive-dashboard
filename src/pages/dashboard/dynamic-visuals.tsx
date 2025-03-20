@@ -1,7 +1,7 @@
 // src/pages/dashboard/dynamic-visuals.tsx
-import React, { FC, useState, useEffect, useMemo, ChangeEvent } from "react";
+import React, { FC, useState, useMemo, ChangeEvent } from "react";
+import useSWR from "swr";
 import { downloadCSV, downloadJSON } from "@/utils/downloads";
-import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
 import { formatDate } from "@/utils/dateTime";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import BasicAreaChart from "@/components/charts/BasicAreaChart";
@@ -9,198 +9,254 @@ import BasicBarChart from "@/components/charts/BasicBarChart";
 import BasicScatterChart from "@/components/charts/BasicScatterChart";
 import BasicPieChart from "@/components/charts/BasicPieChart";
 import { COLORS } from "@/constants/chartColors";
+import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
+import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { HistoricalDataResponse } from "@/types/historicalData";
+import { SensorMetricsDTO } from "@/types/sensorMetrics";
 
-// ---------------------------
-// Type Definitions
-// ---------------------------
-
-/** Historical record with dynamic keys for metrics */
-interface HistoricalRecord {
-  timestamp: string;
-  speed: number;
-  acceleration: number;
-  fuelEfficiency: number;
-  axleLoad: number;
-  vibration: number;
-  emissions: number;
-  // Allow dynamic property access for metrics
-  [key: string]: number | string;
-}
-
-/** Type for metric options */
-interface MetricOption {
-  value: string;
-  label: string;
-  color?: string;
-}
-
-// ---------------------------
-// Sensor Category & Metric Options
-// ---------------------------
+// ----------------------------------------------------------------------
+// performance, load, track & steering.
+// ----------------------------------------------------------------------
 const sensorCategoryMapping: Record<string, string[]> = {
   performance: ["speed", "acceleration"],
-  energy: ["fuelEfficiency", "emissions"],
   load: ["axleLoad", "vibration"],
+  track: [
+    "lateralForceLeft",
+    "lateralForceRight",
+    "verticalForceLeft",
+    "verticalForceRight",
+  ],
+  steering: ["angleOfAttack", "lateralVerticalRatio"],
 };
 
 const sensorCategoryOptions = [
   { value: "performance", label: "Performance" },
-  { value: "energy", label: "Energy" },
   { value: "load", label: "Load" },
+  { value: "track", label: "Track" },
+  { value: "steering", label: "Steering" },
 ];
 
-export const metricOptions: MetricOption[] = [
+export const metricOptions = [
   { value: "speed", label: "Speed (km/h)", color: COLORS[0] },
   { value: "acceleration", label: "Acceleration (m/s²)", color: COLORS[1] },
+  { value: "axleLoad", label: "Axle Load (tons)", color: COLORS[2] },
+  { value: "vibration", label: "Vibration (m/s²)", color: COLORS[3] },
   {
-    value: "fuelEfficiency",
-    label: "Fuel Efficiency (km/l)",
-    color: COLORS[2],
+    value: "lateralForceLeft",
+    label: "Lateral Force Left (kN)",
+    color: COLORS[4],
   },
-  { value: "axleLoad", label: "Axle Load (tons)", color: COLORS[3] },
-  { value: "vibration", label: "Vibration (m/s²)", color: COLORS[4] },
-  { value: "emissions", label: "Emissions (kg CO₂)", color: COLORS[5] },
+  {
+    value: "lateralForceRight",
+    label: "Lateral Force Right (kN)",
+    color: COLORS[5],
+  },
+  {
+    value: "verticalForceLeft",
+    label: "Vertical Force Left (kN)",
+    color: COLORS[0],
+  },
+  {
+    value: "verticalForceRight",
+    label: "Vertical Force Right (kN)",
+    color: COLORS[1],
+  },
+  { value: "angleOfAttack", label: "Angle of Attack (°)", color: COLORS[2] },
+  {
+    value: "lateralVerticalRatio",
+    label: "Lateral/Vertical Force Ratio",
+    color: COLORS[3],
+  },
 ];
+
+export type ChartType = "line" | "area" | "scatter" | "bar" | "pie" | "donut";
 
 const chartTypeOptions: { value: ChartType; label: string }[] = [
   { value: "line", label: "Line Chart" },
   { value: "area", label: "Area Chart" },
   { value: "scatter", label: "Scatter Chart" },
-  { value: "bar", label: "Bar/Column/Histogram" },
+  { value: "bar", label: "Bar/Column Chart" },
   { value: "pie", label: "Pie Chart" },
   { value: "donut", label: "Donut Chart" },
 ];
 
-// ---------------------------
-// Chart Type
-// ---------------------------
-export type ChartType = "line" | "area" | "scatter" | "bar" | "pie" | "donut";
+const analysisId = 1;
 
-// ---------------------------
-// Extended Mock Historical Data
-// ---------------------------
-const mockHistoricalData: HistoricalRecord[] = [
-  {
-    timestamp: "2025-01-01T08:00:00.000+01:00",
-    speed: 60,
-    acceleration: 1.2,
-    fuelEfficiency: 15,
-    axleLoad: 12,
-    vibration: 2.3,
-    emissions: 30,
-  },
-  {
-    timestamp: "2025-01-02T08:00:00.000+01:00",
-    speed: 65,
-    acceleration: 1.1,
-    fuelEfficiency: 14,
-    axleLoad: 13,
-    vibration: 2.5,
-    emissions: 32,
-  },
-  {
-    timestamp: "2025-01-03T08:00:00.000+01:00",
-    speed: 62,
-    acceleration: 1.3,
-    fuelEfficiency: 15.5,
-    axleLoad: 11,
-    vibration: 2.4,
-    emissions: 31,
-  },
-  {
-    timestamp: "2025-01-04T08:00:00.000+01:00",
-    speed: 68,
-    acceleration: 1.0,
-    fuelEfficiency: 14.8,
-    axleLoad: 12.5,
-    vibration: 2.6,
-    emissions: 33,
-  },
-  {
-    timestamp: "2025-01-05T08:00:00.000+01:00",
-    speed: 70,
-    acceleration: 1.4,
-    fuelEfficiency: 15.2,
-    axleLoad: 13,
-    vibration: 2.7,
-    emissions: 34,
-  },
-  {
-    timestamp: "2025-01-06T08:00:00.000+01:00",
-    speed: 66,
-    acceleration: 1.2,
-    fuelEfficiency: 15.0,
-    axleLoad: 12,
-    vibration: 2.5,
-    emissions: 32,
-  },
-];
+// Define a fetcher for SWR to call the historical data endpoint.
+const fetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+    credentials: "include",
+  }).then((res) => handleResponse<HistoricalDataResponse>(res));
 
-// ---------------------------
-// Main Component
-// ---------------------------
+// Extend SensorMetricsDTO to include a timestamp (using createdAt).
+type DynamicSensorMetrics = SensorMetricsDTO & {
+  timestamp: string;
+  [key: string]: number | string;
+};
+
 const DynamicVisuals: FC = () => {
-  // Chart type selection state
+  // Fetch historical data using SWR.
+  const { data: historicalDataResponse, error } =
+    useSWR<HistoricalDataResponse>(
+      `${API_BASE_URL}/dashboard/historical/${analysisId}`,
+      fetcher,
+      { refreshInterval: 60000 }
+    );
+
+  // Map fetched metricsHistory to include a 'timestamp' property.
+  const historicalDataWithTimestamp: DynamicSensorMetrics[] = useMemo(() => {
+    return (historicalDataResponse?.metricsHistory ?? []).map((item) => ({
+      ...item,
+      timestamp: item.createdAt,
+    }));
+  }, [historicalDataResponse]);
+
+  // useDateRangeFilter requires objects with a 'timestamp' property.
+  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
+    useDateRangeFilter<DynamicSensorMetrics>(historicalDataWithTimestamp);
+
   const [chartType, setChartType] = useState<ChartType>("line");
-  // Sensor category filter state
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  // Metric selection state – default to "speed"
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(["speed"]);
 
-  // Date filtering via custom hook
-  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
-    useDateRangeFilter<HistoricalRecord>(mockHistoricalData);
-
-  // Compute available metric options based on sensor category selection.
-  const availableMetricOptions = useMemo<MetricOption[]>(() => {
+  const availableMetricOptions = useMemo(() => {
     if (selectedCategories.length === 0) return metricOptions;
-    const allowedMetrics = selectedCategories.flatMap(
+    const allowed = selectedCategories.flatMap(
       (cat) => sensorCategoryMapping[cat] || []
     );
-    return metricOptions.filter((opt) => allowedMetrics.includes(opt.value));
+    return metricOptions.filter((opt) => allowed.includes(opt.value));
   }, [selectedCategories]);
 
-  // Ensure selectedMetrics remain valid.
-  useEffect(() => {
+  // Ensure that selectedMetrics remain valid based on availableMetricOptions.
+  useMemo(() => {
     setSelectedMetrics((prev) =>
       prev.filter((m) => availableMetricOptions.some((opt) => opt.value === m))
     );
   }, [availableMetricOptions]);
 
-  // Prepare multi-series data with a "date" field.
+  // Build multi-series chart data. For each record, compute derived values based on the selected metric.
   const multiSeriesData = useMemo(() => {
     return filteredData.map((record) => {
-      const formatted: Record<string, number | string> = {
+      const entry: { date: string } & Record<string, number | string> = {
         date: formatDate(record.timestamp),
       };
       selectedMetrics.forEach((metric) => {
-        formatted[metric] = record[metric] as number;
+        let value = 0;
+        switch (metric) {
+          case "speed":
+            value = record.averageSpeed;
+            break;
+          case "acceleration":
+            value = record.averageAcceleration;
+            break;
+          case "axleLoad":
+            value =
+              (record.averageAxleLoadLeft + record.averageAxleLoadRight) / 2;
+            break;
+          case "vibration":
+            value =
+              (record.averageVibrationLeft + record.averageVibrationRight) / 2;
+            break;
+          case "lateralForceLeft":
+            value = record.averageLateralForceLeft;
+            break;
+          case "lateralForceRight":
+            value = record.averageLateralForceRight;
+            break;
+          case "verticalForceLeft":
+            value = record.averageVerticalForceLeft;
+            break;
+          case "verticalForceRight":
+            value = record.averageVerticalForceRight;
+            break;
+          case "angleOfAttack":
+            value = record.averageAoa;
+            break;
+          case "lateralVerticalRatio": {
+            const verticalSum =
+              record.averageVerticalForceLeft +
+              record.averageVerticalForceRight;
+            value =
+              verticalSum > 0
+                ? (record.averageLateralForceLeft +
+                    record.averageLateralForceRight) /
+                  verticalSum
+                : 0;
+            break;
+          }
+          default:
+            value = 0;
+        }
+        entry[metric] = value;
       });
-      return formatted;
+      return entry;
     });
   }, [filteredData, selectedMetrics]);
 
-  // Prepare aggregated data for pie charts using the first selected metric.
+  // Build pie chart data using the first selected metric.
   const pieData = useMemo(() => {
     if (selectedMetrics.length === 0) return [];
     const metric = selectedMetrics[0];
-    const aggregation: Record<string, number> = {};
+    const agg: Record<string, number> = {};
     filteredData.forEach((record) => {
-      const date = formatDate(record.timestamp);
-      aggregation[date] = (aggregation[date] || 0) + (record[metric] as number);
+      const d = formatDate(record.timestamp);
+      agg[d] =
+        (agg[d] || 0) +
+        Number(
+          (() => {
+            switch (metric) {
+              case "speed":
+                return record.averageSpeed;
+              case "acceleration":
+                return record.averageAcceleration;
+              case "axleLoad":
+                return (
+                  (record.averageAxleLoadLeft + record.averageAxleLoadRight) / 2
+                );
+              case "vibration":
+                return (
+                  (record.averageVibrationLeft + record.averageVibrationRight) /
+                  2
+                );
+              case "lateralForceLeft":
+                return record.averageLateralForceLeft;
+              case "lateralForceRight":
+                return record.averageLateralForceRight;
+              case "verticalForceLeft":
+                return record.averageVerticalForceLeft;
+              case "verticalForceRight":
+                return record.averageVerticalForceRight;
+              case "angleOfAttack":
+                return record.averageAoa;
+              case "lateralVerticalRatio": {
+                const verticalSum =
+                  record.averageVerticalForceLeft +
+                  record.averageVerticalForceRight;
+                return verticalSum > 0
+                  ? (record.averageLateralForceLeft +
+                      record.averageLateralForceRight) /
+                      verticalSum
+                  : 0;
+              }
+              default:
+                return 0;
+            }
+          })()
+        );
     });
-    return Object.entries(aggregation).map(([date, total]) => ({
+    return Object.entries(agg).map(([date, total]) => ({
       name: date,
       value: total,
     }));
   }, [filteredData, selectedMetrics]);
 
-  // For donut chart: group "speed" into bins if 'speed' is selected.
+  // For donut chart, if "speed" is selected, create bins.
   const speedBins = useMemo(() => {
     if (!selectedMetrics.includes("speed")) return [];
     const bins = { "<65": 0, "65-70": 0, ">70": 0 };
     filteredData.forEach((record) => {
-      const speed = record.speed as number;
+      const speed = Number(record.averageSpeed);
       if (speed < 65) bins["<65"] += 1;
       else if (speed <= 70) bins["65-70"] += 1;
       else bins[">70"] += 1;
@@ -211,9 +267,6 @@ const DynamicVisuals: FC = () => {
     }));
   }, [filteredData, selectedMetrics]);
 
-  // ---------------------------
-  // Render Chart Based on Chart Type
-  // ---------------------------
   const renderChart = (): React.ReactElement | null => {
     switch (chartType) {
       case "line":
@@ -280,13 +333,7 @@ const DynamicVisuals: FC = () => {
         return (
           <BasicPieChart
             data={pieData}
-            pies={[
-              {
-                dataKey: "value",
-                nameKey: "name",
-                outerRadius: 100,
-              },
-            ]}
+            pies={[{ dataKey: "value", nameKey: "name", outerRadius: 100 }]}
             height={300}
           />
         );
@@ -306,17 +353,14 @@ const DynamicVisuals: FC = () => {
           />
         );
       default:
-        return <p>Chart type not supported.</p>;
+        return null;
     }
   };
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
       <h1 className="text-3xl font-bold mb-4">Dynamic Visualizations</h1>
-
-      {/* Date Filter & Export */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <h2 className="text-xl font-semibold">Filter Data by Date</h2>
         <div className="flex flex-wrap items-center gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
@@ -346,37 +390,32 @@ const DynamicVisuals: FC = () => {
           </div>
           <button
             onClick={() => downloadCSV(filteredData, "dynamic_visuals.csv")}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            className="bg-blue-600 text-white px-4 py-2 rounded"
           >
             Download CSV
           </button>
           <button
             onClick={() => downloadJSON(filteredData, "dynamic_visuals.json")}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            className="bg-green-600 text-white px-4 py-2 rounded"
           >
             Download JSON
           </button>
         </div>
       </section>
-
-      {/* Sensor Category Filter */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <h2 className="text-xl font-semibold">Filter by Sensor Category</h2>
         <div className="flex flex-wrap items-center gap-4">
           {sensorCategoryOptions.map((opt) => (
             <label key={opt.value} className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={selectedCategories.includes(opt.value)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedCategories([...selectedCategories, opt.value]);
-                  } else {
-                    setSelectedCategories(
-                      selectedCategories.filter((cat) => cat !== opt.value)
-                    );
-                  }
-                }}
+                onChange={(e) =>
+                  setSelectedCategories(
+                    e.target.checked
+                      ? [...selectedCategories, opt.value]
+                      : selectedCategories.filter((cat) => cat !== opt.value)
+                  )
+                }
                 className="h-4 w-4"
               />
               <span>{opt.label}</span>
@@ -384,25 +423,20 @@ const DynamicVisuals: FC = () => {
           ))}
         </div>
       </section>
-
-      {/* Metric Selection */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <h2 className="text-xl font-semibold">Select Metrics</h2>
         <div className="flex flex-wrap gap-4">
           {availableMetricOptions.map((opt) => (
             <label key={opt.value} className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={selectedMetrics.includes(opt.value)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedMetrics([...selectedMetrics, opt.value]);
-                  } else {
-                    setSelectedMetrics(
-                      selectedMetrics.filter((m) => m !== opt.value)
-                    );
-                  }
-                }}
+                onChange={(e) =>
+                  setSelectedMetrics(
+                    e.target.checked
+                      ? [...selectedMetrics, opt.value]
+                      : selectedMetrics.filter((m) => m !== opt.value)
+                  )
+                }
                 className="h-4 w-4"
               />
               <span>{opt.label}</span>
@@ -410,10 +444,7 @@ const DynamicVisuals: FC = () => {
           ))}
         </div>
       </section>
-
-      {/* Chart Type Selection */}
-      <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <h2 className="text-xl font-semibold">Select Chart Type</h2>
+      <section className="bg-white p-4 rounded-md shadow">
         <select
           value={chartType}
           onChange={(e) => setChartType(e.target.value as ChartType)}
@@ -426,10 +457,15 @@ const DynamicVisuals: FC = () => {
           ))}
         </select>
       </section>
-
-      {/* Render Dynamic Chart */}
       <section className="bg-white p-4 rounded-md shadow">
-        {renderChart()}
+        {error && (
+          <p className="text-red-600">
+            Error loading historical data:{" "}
+            {error instanceof Error ? error.message : "Unknown error"}
+          </p>
+        )}
+        {!historicalDataResponse && !error && <p>Loading historical data...</p>}
+        {historicalDataResponse && renderChart()}
       </section>
     </div>
   );

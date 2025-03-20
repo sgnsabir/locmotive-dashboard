@@ -1,26 +1,49 @@
-// src/pages/dashboard/realtime.tsx
-
-import React from "react";
-import { useSSE } from "@/hooks/useSSE";
-import type { SensorMetricsDTO } from "@/api";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { SensorMetricsDTO } from "@/types/sensorMetrics";
 
 const RealtimeDashboard: React.FC = () => {
   const router = useRouter();
   const { trainNo: trainNoParam } = router.query;
+  // If not provided, default to some integer for demo
   const trainNo =
     typeof trainNoParam === "string" ? parseInt(trainNoParam, 10) : 123;
 
-  // Construct the SSE endpoint URL. Assumes backend route: GET /api/v1/realtime/stream?trainNo=...
-  const streamEndpoint = `/realtime/stream?trainNo=${trainNo}`;
+  const [realtimeMetrics, setRealtimeMetrics] =
+    useState<SensorMetricsDTO | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Subscribe to the SSE stream using our custom hook.
-  const { data: realtimeMetrics, error } = useSSE<SensorMetricsDTO>(
-    streamEndpoint,
-    [trainNo]
-  );
+  useEffect(() => {
+    if (!trainNo) return;
 
-  // Compute average vibration if both left and right values are provided.
+    // Direct SSE approach using the plan snippet:
+    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/realtime/stream?trainNo=${trainNo}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: SensorMetricsDTO = JSON.parse(event.data);
+        setRealtimeMetrics(data);
+      } catch (err) {
+        console.error("Error parsing SSE data:", err);
+        setError("Failed to parse realtime metrics data.");
+      }
+    };
+
+    eventSource.onerror = (evt) => {
+      console.error("SSE error:", evt);
+      setError("Error receiving realtime data.");
+      // Optionally close the connection if there is an error
+      // eventSource.close();
+    };
+
+    // Cleanup to avoid memory leaks:
+    return () => {
+      eventSource.close();
+    };
+  }, [trainNo]);
+
+  // Compute derived values if left/right values exist
   const computedAverageVibration =
     realtimeMetrics &&
     realtimeMetrics.averageVibrationLeft !== undefined &&
@@ -30,7 +53,6 @@ const RealtimeDashboard: React.FC = () => {
         2
       : undefined;
 
-  // Compute average vertical force if both left and right values are provided.
   const computedAverageVerticalForce =
     realtimeMetrics &&
     realtimeMetrics.averageVerticalForceLeft !== undefined &&
@@ -43,11 +65,13 @@ const RealtimeDashboard: React.FC = () => {
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Realtime Dashboard</h1>
+
       {error && (
-        <div className="text-red-600 mb-4">
-          Error: {error.message || "Failed to load realtime data."}
+        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
+          Error: {error}
         </div>
       )}
+
       {realtimeMetrics ? (
         <div className="bg-white shadow rounded p-4">
           <h2 className="text-xl font-semibold mb-2">
@@ -78,11 +102,10 @@ const RealtimeDashboard: React.FC = () => {
                 <strong>Risk Score:</strong> {realtimeMetrics.riskScore}
               </li>
             )}
-            {/* Additional metric fields can be added as needed */}
           </ul>
         </div>
       ) : (
-        <p className="text-gray-600">Waiting for realtime data...</p>
+        !error && <p className="text-gray-600">Waiting for realtime data...</p>
       )}
     </div>
   );

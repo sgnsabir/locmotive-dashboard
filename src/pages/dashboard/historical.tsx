@@ -1,102 +1,81 @@
 // src/pages/dashboard/historical.tsx
-import React, { FC, useState, useMemo } from "react";
+import React, { FC, useState, useMemo, ChangeEvent } from "react";
 import { Responsive, WidthProvider, Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
+import useSWR from "swr";
 import { downloadCSV, downloadJSON } from "@/utils/downloads";
-import WidgetCard, {
-  DashboardWidget,
-  HistoricalRecord,
-} from "@/components/widget/WidgetCard";
+import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
+import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { SensorMetricsDTO } from "@/types/sensorMetrics";
+import { HistoricalDataResponse } from "@/types/historicalData";
+import { formatDate } from "@/utils/dateTime";
+import { HistoricalRecord } from "@/components/widget/WidgetCard";
+import WidgetCard, { DashboardWidget } from "@/components/widget/WidgetCard";
 
-// ---------------------------
-// Sensor Category & Metric Options
-// ---------------------------
 const sensorCategoryMapping: Record<string, string[]> = {
   performance: ["speed", "acceleration"],
-  energy: ["fuelEfficiency", "emissions"],
   load: ["axleLoad", "vibration"],
+  track: [
+    "lateralForceLeft",
+    "lateralForceRight",
+    "verticalForceLeft",
+    "verticalForceRight",
+  ],
+  steering: ["angleOfAttack", "lateralVerticalRatio"],
 };
 
 const sensorCategoryOptions = [
   { value: "performance", label: "Performance" },
-  { value: "energy", label: "Energy" },
   { value: "load", label: "Load" },
+  { value: "track", label: "Track" },
+  { value: "steering", label: "Steering" },
 ];
 
-const metricOptions = [
-  { value: "speed", label: "Speed (km/h)" },
-  { value: "acceleration", label: "Acceleration (m/s²)" },
-  { value: "fuelEfficiency", label: "Fuel Efficiency (km/l)" },
-  { value: "axleLoad", label: "Axle Load (tons)" },
-  { value: "vibration", label: "Vibration (m/s²)" },
-  { value: "emissions", label: "Emissions (kg CO₂)" },
-];
-
-// ---------------------------
-// Extended Mock Historical Data
-// ---------------------------
-const mockHistoricalData: HistoricalRecord[] = [
+export const metricOptions = [
+  { value: "speed", label: "Speed (km/h)", color: "#8884d8" },
+  { value: "acceleration", label: "Acceleration (m/s²)", color: "#82ca9d" },
+  { value: "axleLoad", label: "Axle Load (tons)", color: "#ffc658" },
+  { value: "vibration", label: "Vibration (m/s²)", color: "#ff8042" },
   {
-    timestamp: "2025-01-01T08:00:00.000+01:00",
-    speed: 60,
-    acceleration: 1.2,
-    fuelEfficiency: 15,
-    axleLoad: 12,
-    vibration: 2.3,
-    emissions: 30,
+    value: "lateralForceLeft",
+    label: "Lateral Force Left (kN)",
+    color: "#8dd1e1",
   },
   {
-    timestamp: "2025-01-02T08:00:00.000+01:00",
-    speed: 65,
-    acceleration: 1.1,
-    fuelEfficiency: 14,
-    axleLoad: 13,
-    vibration: 2.5,
-    emissions: 32,
+    value: "lateralForceRight",
+    label: "Lateral Force Right (kN)",
+    color: "#a4de6c",
   },
   {
-    timestamp: "2025-01-03T08:00:00.000+01:00",
-    speed: 62,
-    acceleration: 1.3,
-    fuelEfficiency: 15.5,
-    axleLoad: 11,
-    vibration: 2.4,
-    emissions: 31,
+    value: "verticalForceLeft",
+    label: "Vertical Force Left (kN)",
+    color: "#8884d8",
   },
   {
-    timestamp: "2025-01-04T08:00:00.000+01:00",
-    speed: 68,
-    acceleration: 1.0,
-    fuelEfficiency: 14.8,
-    axleLoad: 12.5,
-    vibration: 2.6,
-    emissions: 33,
+    value: "verticalForceRight",
+    label: "Vertical Force Right (kN)",
+    color: "#82ca9d",
   },
+  { value: "angleOfAttack", label: "Angle of Attack (°)", color: "#ffc658" },
   {
-    timestamp: "2025-01-05T08:00:00.000+01:00",
-    speed: 70,
-    acceleration: 1.4,
-    fuelEfficiency: 15.2,
-    axleLoad: 13,
-    vibration: 2.7,
-    emissions: 34,
-  },
-  {
-    timestamp: "2025-01-06T08:00:00.000+01:00",
-    speed: 66,
-    acceleration: 1.2,
-    fuelEfficiency: 15.0,
-    axleLoad: 12,
-    vibration: 2.5,
-    emissions: 32,
+    value: "lateralVerticalRatio",
+    label: "Lateral/Vertical Ratio",
+    color: "#ff8042",
   },
 ];
 
-// ---------------------------
-// Default Widget Settings
-// ---------------------------
+// Analysis ID (this could be made dynamic)
+const analysisId = 1;
+
+// SWR fetcher for historical data
+const fetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+    credentials: "include",
+  }).then((res) => handleResponse<HistoricalDataResponse>(res));
+
+// Default widget configuration
 const defaultWidget: DashboardWidget = {
   id: "widget-1",
   chartType: "line",
@@ -108,13 +87,38 @@ const defaultWidget: DashboardWidget = {
 };
 
 const Historical: FC = () => {
-  // Date range filter hook using our extended mock data
-  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
-    useDateRangeFilter<HistoricalRecord>(mockHistoricalData);
+  // Fetch historical data from backend
+  const { data: historicalResponse, error } = useSWR<HistoricalDataResponse>(
+    `${API_BASE_URL}/dashboard/historical/${analysisId}`,
+    fetcher,
+    { refreshInterval: 60000 }
+  );
 
-  // Sensor category selection state
+  // Convert fetched data to the structure expected by WidgetCard:
+  // Each record must have a 'date' property (string) and numeric metric values.
+  const historicalRecords: HistoricalRecord[] = useMemo(() => {
+    const metricsHistory = historicalResponse?.metricsHistory ?? [];
+    return metricsHistory.map((item: SensorMetricsDTO) => {
+      const record: Record<string, number | string> = {
+        date: formatDate(item.createdAt),
+      };
+      // Copy numeric properties from the fetched item in a type-safe way
+      (Object.keys(item) as (keyof SensorMetricsDTO)[]).forEach((key) => {
+        const value = item[key];
+        if (typeof value === "number") {
+          record[key] = value;
+        }
+      });
+      return record as HistoricalRecord;
+    });
+  }, [historicalResponse]);
+
+  // Date range filter using our hook (expects objects with a 'date' property)
+  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
+    useDateRangeFilter<HistoricalRecord>(historicalRecords);
+
+  // Sensor category filtering state
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  // Compute available metric options based on sensor categories selected
   const availableMetricOptions = useMemo(() => {
     if (selectedCategories.length === 0) return metricOptions;
     const allowedMetrics = selectedCategories.flatMap(
@@ -123,8 +127,8 @@ const Historical: FC = () => {
     return metricOptions.filter((opt) => allowedMetrics.includes(opt.value));
   }, [selectedCategories]);
 
+  // Widget grid state
   const [widgets, setWidgets] = useState<DashboardWidget[]>([defaultWidget]);
-
   const ResponsiveGridLayout = WidthProvider(Responsive);
 
   const onLayoutChange = (layout: Layout[]) => {
@@ -170,7 +174,9 @@ const Historical: FC = () => {
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setStartDate(e.target.value)
+              }
               className="mt-1 block border rounded p-2"
             />
           </div>
@@ -181,7 +187,9 @@ const Historical: FC = () => {
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setEndDate(e.target.value)
+              }
               className="mt-1 block border rounded p-2"
             />
           </div>
@@ -200,7 +208,7 @@ const Historical: FC = () => {
         </div>
       </section>
 
-      {/* Global Sensor Category Filter */}
+      {/* Sensor Category Filter */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
         <h2 className="text-xl font-semibold">Filter by Sensor Category</h2>
         <div className="flex flex-wrap items-center gap-4">
@@ -209,15 +217,13 @@ const Historical: FC = () => {
               <input
                 type="checkbox"
                 checked={selectedCategories.includes(opt.value)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedCategories([...selectedCategories, opt.value]);
-                  } else {
-                    setSelectedCategories(
-                      selectedCategories.filter((cat) => cat !== opt.value)
-                    );
-                  }
-                }}
+                onChange={(e) =>
+                  setSelectedCategories(
+                    e.target.checked
+                      ? [...selectedCategories, opt.value]
+                      : selectedCategories.filter((cat) => cat !== opt.value)
+                  )
+                }
                 className="h-4 w-4"
               />
               <span>{opt.label}</span>
@@ -226,18 +232,7 @@ const Historical: FC = () => {
         </div>
       </section>
 
-      {/* Widget Controls */}
-      <section className="bg-white p-4 rounded-md shadow flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Chart Widgets</h2>
-        <button
-          onClick={addWidget}
-          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-        >
-          Add Widget
-        </button>
-      </section>
-
-      {/* Render Widgets in Grid Layout */}
+      {/* Widget Grid Layout */}
       <ResponsiveGridLayout
         layouts={{
           lg: widgets.map((w) => ({ i: w.id, x: w.x, y: w.y, w: w.w, h: w.h })),
@@ -260,6 +255,20 @@ const Historical: FC = () => {
           </div>
         ))}
       </ResponsiveGridLayout>
+      <section className="flex justify-end">
+        <button
+          onClick={addWidget}
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+        >
+          Add Widget
+        </button>
+      </section>
+      {error && (
+        <p className="text-red-600">
+          Error loading historical data:{" "}
+          {error instanceof Error ? error.message : "Unknown error"}
+        </p>
+      )}
     </div>
   );
 };

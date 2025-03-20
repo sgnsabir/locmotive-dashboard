@@ -1,84 +1,113 @@
-import React, { FC } from "react";
-import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
-import { downloadCSV, downloadJSON } from "@/utils/downloads";
-import { formatTime } from "@/utils/dateTime";
+// pages/dashboard/performance.tsx
+import React, { useEffect, useState, useCallback } from "react";
 import BasicLineChart from "@/components/charts/BasicLineChart";
+import { getPerformanceData } from "@/api/performance";
+import { formatTime } from "@/utils/dateTime";
+import { PerformanceDTO } from "@/types/performance";
 
-interface PerformanceRecord {
-  timestamp: string;
-  speed: number;
-  acceleration: number;
-}
+const PerformancePage: React.FC = () => {
+  const [performanceData, setPerformanceData] = useState<PerformanceDTO[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
-const mockPerformanceData: PerformanceRecord[] = [
-  { timestamp: "2025-01-01T08:00:00.000+01:00", speed: 60, acceleration: 1.2 },
-  { timestamp: "2025-01-01T08:10:00.000+01:00", speed: 62, acceleration: 1.1 },
-  { timestamp: "2025-01-01T08:20:00.000+01:00", speed: 65, acceleration: 1.3 },
-  { timestamp: "2025-01-01T08:30:00.000+01:00", speed: 68, acceleration: 1.0 },
-];
+  // Default date range: Last 7 days to now in ISO format
+  const [startDate, setStartDate] = useState<string>(
+    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  );
+  const [endDate, setEndDate] = useState<string>(new Date().toISOString());
 
-const Performance: FC = () => {
-  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
-    useDateRangeFilter(mockPerformanceData);
+  // Fetch performance data based on the current startDate and endDate.
+  const fetchPerformance = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getPerformanceData(startDate, endDate);
+      setPerformanceData(data);
+    } catch (err: unknown) {
+      console.error("Error fetching performance data:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unknown error occurred while fetching performance data.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate]);
 
-  const lineData = filteredData.map((item) => ({
-    time: formatTime(Date.parse(item.timestamp)),
+  // Fetch data when the component mounts or when date range changes.
+  useEffect(() => {
+    fetchPerformance();
+  }, [fetchPerformance]);
+
+  // Map performance data for chart rendering. Format timestamp to user-friendly time.
+  const chartData = performanceData.map((item) => ({
+    time: formatTime(new Date(item.timestamp).getTime()),
     speed: item.speed,
-    acc: item.acceleration,
+    acceleration: item.acceleration,
   }));
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold">Train Performance</h1>
+    <div className="container mx-auto px-4 py-6">
+      <h1 className="text-3xl font-bold mb-4">Train Performance</h1>
 
-      <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div>
-            <label className="block text-sm">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="border rounded p-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="border rounded p-2"
-            />
-          </div>
-          <button
-            onClick={() => downloadCSV(filteredData, "performance.csv")}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Download CSV
-          </button>
-          <button
-            onClick={() => downloadJSON(filteredData, "performance.json")}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Download JSON
-          </button>
+      {/* Date range filters and refresh control */}
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <div>
+          <label htmlFor="startDate" className="mr-2 text-sm">
+            Start Date:
+          </label>
+          <input
+            id="startDate"
+            type="date"
+            value={startDate.split("T")[0]}
+            onChange={(e) => {
+              const newStart = new Date(e.target.value).toISOString();
+              setStartDate(newStart);
+            }}
+            className="border rounded p-2"
+          />
         </div>
-      </section>
+        <div>
+          <label htmlFor="endDate" className="mr-2 text-sm">
+            End Date:
+          </label>
+          <input
+            id="endDate"
+            type="date"
+            value={endDate.split("T")[0]}
+            onChange={(e) => {
+              const newEnd = new Date(e.target.value).toISOString();
+              setEndDate(newEnd);
+            }}
+            className="border rounded p-2"
+          />
+        </div>
+        <button
+          onClick={fetchPerformance}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Refresh
+        </button>
+      </div>
 
-      <section className="bg-white p-4 rounded-md shadow">
-        <h2 className="text-xl font-semibold mb-2">Speed Over Time</h2>
+      {loading && <p>Loading performance data...</p>}
+      {error && <p className="text-red-600">{error}</p>}
+      {chartData.length > 0 ? (
         <BasicLineChart
-          data={lineData}
+          data={chartData}
           xKey="time"
           lines={[
-            { dataKey: "speed", name: "Speed" },
-            { dataKey: "acc", name: "Acceleration" },
+            { dataKey: "speed", name: "Speed (km/h)" },
+            { dataKey: "acceleration", name: "Acceleration (m/s²)" },
           ]}
+          height={300}
         />
-      </section>
+      ) : (
+        !loading && <p>No performance data available.</p>
+      )}
     </div>
   );
 };
 
-export default Performance;
+export default PerformancePage;

@@ -1,85 +1,51 @@
-import React, { FC } from "react";
-import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
-import { downloadCSV, downloadJSON } from "@/utils/downloads";
-import { formatDate } from "@/utils/dateTime";
+// src/pages/dashboard/alerts.tsx
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { getAlerts } from "@/api/alerts";
+import { AlertResponse } from "@/types/alert";
 import AlertsList from "@/components/alerts/AlertList";
 
-interface AlertItem {
-  timestamp: string;
-  id: number;
-  type: string;
-  severity: string;
-  message: string;
-}
+const Alerts: React.FC = () => {
+  const [alerts, setAlerts] = useState<AlertResponse[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-const mockAlerts: AlertItem[] = [
-  {
-    timestamp: "2025-02-10T09:00:00.000+01:00",
-    id: 1,
-    type: "Overload",
-    severity: "High",
-    message: "Axle load exceeding normal range on Car 3.",
-  },
-  {
-    timestamp: "2025-02-10T09:45:00.000+01:00",
-    id: 2,
-    type: "Brake Failure",
-    severity: "Critical",
-    message: "Brake pressure anomaly detected in Car 1.",
-  },
-];
+  const fetchAlerts = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getAlerts();
+      setAlerts(data);
+    } catch (err: any) {
+      setError(
+        err.message || "An unknown error occurred while fetching alerts."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
-const Alerts: FC = () => {
-  const { startDate, endDate, filteredData, setStartDate, setEndDate } =
-    useDateRangeFilter(mockAlerts);
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
 
-  const finalData = filteredData.map((item) => ({
-    ...item,
-    date: formatDate(item.timestamp),
-  }));
+  // When an alert is clicked, navigate to its detail page.
+  const handleAlertClick = (alert: AlertResponse) => {
+    router.push(`/dashboard/alerts/${alert.id}`);
+  };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold mb-4">Alerts & Anomalies</h1>
-
-      <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div>
-            <label className="block text-sm">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="border rounded p-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="border rounded p-2"
-            />
-          </div>
-          <button
-            onClick={() => downloadCSV(finalData, "alerts.csv")}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Download CSV
-          </button>
-          <button
-            onClick={() => downloadJSON(finalData, "alerts.json")}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Download JSON
-          </button>
-        </div>
-      </section>
-
-      <section className="bg-white p-4 rounded-md shadow">
-        <AlertsList alerts={finalData} />
-      </section>
+    <div className="container mx-auto px-4 py-6">
+      <h1 className="text-3xl font-bold mb-4">Alerts &amp; Anomalies</h1>
+      {loading && <p>Loading alerts...</p>}
+      {error && <p className="text-red-600">{error}</p>}
+      {!loading && alerts.length === 0 && (
+        <p className="text-gray-500 italic">No active alerts</p>
+      )}
+      {alerts.length > 0 && (
+        <AlertsList alerts={alerts} onAlertClick={handleAlertClick} />
+      )}
     </div>
   );
 };

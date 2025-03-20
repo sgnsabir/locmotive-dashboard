@@ -1,109 +1,160 @@
-// pages/settings.tsx
-
-import React, { FC, useState } from "react";
-
-interface GeneralSettings {
-  username: string;
-  email: string;
-  avatarUrl: string;
-}
-
-interface DashboardSettings {
-  showSpeedWidget: boolean;
-  showFuelWidget: boolean;
-  showPerformanceWidget: boolean;
-}
-
-interface NotificationSettings {
-  enableNotifications: boolean;
-  emailAlerts: boolean;
-  smsAlerts: boolean;
-}
-
-interface SecuritySettings {
-  twoFactorEnabled: boolean;
-  phoneNumber: string;
-}
-
-interface SettingsState {
-  general: GeneralSettings;
-  dashboard: DashboardSettings;
-  notification: NotificationSettings;
-  security: SecuritySettings;
-}
-
-const initialSettings: SettingsState = {
-  general: {
-    username: "John Doe",
-    email: "john@example.com",
-    avatarUrl: "/images/default-avatar.png",
-  },
-  dashboard: {
-    showSpeedWidget: true,
-    showFuelWidget: true,
-    showPerformanceWidget: true,
-  },
-  notification: {
-    enableNotifications: true,
-    emailAlerts: true,
-    smsAlerts: false,
-  },
-  security: {
-    twoFactorEnabled: false,
-    phoneNumber: "",
-  },
-};
+// src/pages/settings.tsx
+import React, { FC, useState, useEffect, ChangeEvent } from "react";
+import { API_BASE_URL, handleResponse } from "@/api/apiHelper";
+import {
+  UserSettings,
+  GeneralSettings,
+  DashboardSettings,
+  NotificationSettings,
+  SecuritySettings,
+} from "@/types/settings";
 
 const Settings: FC = () => {
-  const [settings, setSettings] = useState<SettingsState>(initialSettings);
+  // Local state for user settings.
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch user settings on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/settings`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include", // ensure cookies are sent in production
+        });
+        const data = await handleResponse<UserSettings>(response);
+        // Ensure each field has a valid default value.
+        setSettings({
+          general: {
+            username: data.general.username || "",
+            email: data.general.email || "",
+            avatarUrl: data.general.avatarUrl || "/images/default-avatar.png",
+          },
+          dashboard: {
+            showSpeedWidget: data.dashboard.showSpeedWidget,
+            showFuelWidget: data.dashboard.showFuelWidget,
+            showPerformanceWidget: data.dashboard.showPerformanceWidget,
+          },
+          notification: {
+            enableNotifications: data.notification.enableNotifications,
+            emailAlerts: data.notification.emailAlerts,
+            smsAlerts: data.notification.smsAlerts,
+          },
+          security: {
+            twoFactorEnabled: data.security.twoFactorEnabled,
+            phoneNumber: data.security.phoneNumber || "",
+          },
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          console.error("Error fetching settings:", err);
+          setError(err.message || "Failed to fetch user settings");
+        } else {
+          console.error("Error fetching settings:", err);
+          setError("Failed to fetch user settings");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  // Handler for input changes in general settings
   const handleGeneralChange = (field: keyof GeneralSettings, value: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      general: { ...prev.general, [field]: value },
-    }));
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      general: { ...settings.general, [field]: value },
+    });
   };
 
+  // Handler for dashboard settings changes
   const handleDashboardChange = (
     field: keyof DashboardSettings,
     value: boolean
   ) => {
-    setSettings((prev) => ({
-      ...prev,
-      dashboard: { ...prev.dashboard, [field]: value },
-    }));
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      dashboard: { ...settings.dashboard, [field]: value },
+    });
   };
 
+  // Handler for notification settings changes
   const handleNotificationChange = (
     field: keyof NotificationSettings,
     value: boolean
   ) => {
-    setSettings((prev) => ({
-      ...prev,
-      notification: { ...prev.notification, [field]: value },
-    }));
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      notification: { ...settings.notification, [field]: value },
+    });
   };
 
+  // Handler for security settings changes
   const handleSecurityChange = (
     field: keyof SecuritySettings,
     value: string | boolean
   ) => {
-    setSettings((prev) => ({
-      ...prev,
-      security: { ...prev.security, [field]: value },
-    }));
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      security: { ...settings.security, [field]: value },
+    });
   };
 
-  const handleSave = () => {
-    // In real app, dispatch or call API
-    console.log("Settings saved:", settings);
-    alert("Settings saved (mock)!");
+  // Save settings to the backend via PUT request.
+  const handleSave = async () => {
+    if (!settings) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(settings),
+      });
+      const updated = await handleResponse<UserSettings>(response);
+      setSettings(updated);
+      alert("Settings updated successfully!");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        console.error("Error updating settings:", err);
+        setError(err.message || "Failed to update settings");
+      } else {
+        console.error("Error updating settings:", err);
+        setError("Failed to update settings");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading || settings === null) {
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <p>Loading settings...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold">Settings & Configurations</h1>
-
+      <h1 className="text-3xl font-bold">User Settings & Configurations</h1>
+      {error && <div className="text-red-600">{error}</div>}
       <section className="bg-white p-6 rounded-md shadow">
         <h2 className="text-xl font-semibold mb-4">General Settings</h2>
         <div className="space-y-4">
@@ -114,7 +165,9 @@ const Settings: FC = () => {
             <input
               type="text"
               value={settings.general.username}
-              onChange={(e) => handleGeneralChange("username", e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                handleGeneralChange("username", e.target.value)
+              }
               className="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
@@ -125,7 +178,9 @@ const Settings: FC = () => {
             <input
               type="email"
               value={settings.general.email}
-              onChange={(e) => handleGeneralChange("email", e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                handleGeneralChange("email", e.target.value)
+              }
               className="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
@@ -136,7 +191,9 @@ const Settings: FC = () => {
             <input
               type="text"
               value={settings.general.avatarUrl}
-              onChange={(e) => handleGeneralChange("avatarUrl", e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                handleGeneralChange("avatarUrl", e.target.value)
+              }
               className="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
@@ -246,7 +303,7 @@ const Settings: FC = () => {
               <input
                 type="text"
                 value={settings.security.phoneNumber}
-                onChange={(e) =>
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   handleSecurityChange("phoneNumber", e.target.value)
                 }
                 className="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -259,9 +316,10 @@ const Settings: FC = () => {
       <div className="flex justify-end">
         <button
           onClick={handleSave}
-          className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700"
+          disabled={saving}
+          className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          Save Settings
+          {saving ? "Saving..." : "Save Settings"}
         </button>
       </div>
     </div>
