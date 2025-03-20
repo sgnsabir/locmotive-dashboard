@@ -4,25 +4,39 @@ import useSWR from "swr";
 import KPICard from "@/components/dashboard/KPICard";
 import RealTimeStats from "@/components/dashboard/RealTimeStats";
 import HistoricalTrends from "@/components/dashboard/HistoricalTrends";
+import MaintenanceSchedule from "@/components/maintenance/MaintenanceSchedule";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
 import { getToken, API_BASE_URL, handleResponse } from "@/api/apiHelper";
+import { MaintenanceRecord } from "@/types/maintenance";
 
-// Define a fetcher that includes the Authorization header and credentials if needed
-const fetcher = (url: string) => {
-  const token = getToken();
-  return fetch(url, {
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
+// Define a fetcher for SWR to get the latest sensor metrics
+const metricsFetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
     credentials: "include",
   }).then((res) => handleResponse<SensorMetricsDTO>(res));
-};
+
+// SWR fetcher for maintenance schedule data
+const maintenanceFetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+    credentials: "include",
+  }).then((res) => handleResponse<MaintenanceRecord[]>(res));
 
 const HomeDashboard: FC = () => {
-  // Using a fixed analysisId=1 for demonstration; in production this may come from dynamic state or user context.
-  const { data: metrics, error } = useSWR<SensorMetricsDTO>(
+  // Fixed analysisId=1 for demonstration; may come from dynamic state in production.
+  const { data: metrics, error: metricsError } = useSWR<SensorMetricsDTO>(
     `${API_BASE_URL}/dashboard/latest/1`,
-    fetcher,
-    { refreshInterval: 30000 } // Refresh data every 30s
+    metricsFetcher,
+    { refreshInterval: 30000 }
   );
+
+  // Fetch maintenance schedule using SWR
+  const { data: maintenanceSchedule, error: maintenanceError } = useSWR<
+    MaintenanceRecord[]
+  >(`${API_BASE_URL}/maintenance/schedule`, maintenanceFetcher, {
+    refreshInterval: 60000,
+  });
 
   // Map the fetched metrics to KPI card data
   const kpiData = [
@@ -61,13 +75,15 @@ const HomeDashboard: FC = () => {
     <div className="space-y-8">
       <section>
         <h1 className="text-3xl font-bold mb-4">Dashboard Overview</h1>
-        {error && (
+        {metricsError && (
           <p className="text-red-600">
             Failed to load metrics:{" "}
-            {error instanceof Error ? error.message : "Unknown error"}
+            {metricsError instanceof Error
+              ? metricsError.message
+              : "Unknown error"}
           </p>
         )}
-        {!metrics && !error && <p>Loading dashboard metrics...</p>}
+        {!metrics && !metricsError && <p>Loading dashboard metrics...</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {kpiData.map((kpi, index) => (
             <KPICard key={index} {...kpi} />
@@ -83,9 +99,30 @@ const HomeDashboard: FC = () => {
         <HistoricalTrends />
       </section>
 
+      {/* Upcoming Maintenance Section */}
       <section className="bg-white p-4 rounded-md shadow">
         <h2 className="text-2xl font-semibold">Upcoming Maintenance</h2>
-        <p>No maintenance scheduled in the next 7 days.</p>
+        {maintenanceError && (
+          <p className="text-red-600">
+            Failed to load maintenance schedule:{" "}
+            {maintenanceError instanceof Error
+              ? maintenanceError.message
+              : "Unknown error"}
+          </p>
+        )}
+        {!maintenanceSchedule && !maintenanceError && (
+          <p>Loading maintenance schedule...</p>
+        )}
+        {maintenanceSchedule && maintenanceSchedule.length > 0 ? (
+          <MaintenanceSchedule items={maintenanceSchedule} />
+        ) : (
+          maintenanceSchedule &&
+          maintenanceSchedule.length === 0 && (
+            <p className="text-gray-500 italic">
+              No maintenance scheduled in the next 7 days.
+            </p>
+          )
+        )}
       </section>
     </div>
   );

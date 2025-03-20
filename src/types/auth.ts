@@ -1,6 +1,7 @@
+// src/types/auth.ts
+
 export interface LoginResponse {
   token: string;
-  username: string;
   expiresIn: number;
 }
 
@@ -10,6 +11,9 @@ export interface UserResponse {
   email: string;
   roles: string[];
   createdAt: string;
+  avatar?: string;
+  twoFactorEnabled?: boolean;
+  phone?: string;
 }
 
 export interface RegistrationRequest {

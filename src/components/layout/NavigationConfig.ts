@@ -11,7 +11,6 @@ export interface NavItem {
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { label: "Home (Dashboard)", href: "/" },
   { label: "Performance", href: "/dashboard/performance" },
-  { label: "Energy", href: "/dashboard/energy" },
   { label: "Tracking", href: "/dashboard/tracking" },
   { label: "Track Health", href: "/dashboard/track" },
   { label: "Load & Weight", href: "/dashboard/load" },

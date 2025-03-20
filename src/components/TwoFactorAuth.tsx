@@ -1,4 +1,6 @@
+// src/components/TwoFactorAuth.tsx
 import React, { FC, useState } from "react";
+import { API_BASE_URL, getToken } from "@/api/apiHelper";
 
 interface TwoFactorAuthProps {
   enabled: boolean;
@@ -8,13 +10,43 @@ interface TwoFactorAuthProps {
 const TwoFactorAuth: FC<TwoFactorAuthProps> = ({ enabled, onToggle }) => {
   const [verificationCode, setVerificationCode] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [successMessage, setSuccessMessage] = useState<string>("");
 
-  const handleSendCode = () => {
+  const handleSendCode = async () => {
     setSending(true);
-    setTimeout(() => {
-      alert("Verification code sent!");
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const token = getToken();
+      const response = await fetch(
+        `${API_BASE_URL}/auth/send-verification-code`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+        }
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || "Failed to send verification code"
+        );
+      }
+      const data = await response.json();
+      setSuccessMessage(data.message || "Verification code sent successfully.");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("An error occurred while sending the code.");
+      }
+    } finally {
       setSending(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -49,9 +81,15 @@ const TwoFactorAuth: FC<TwoFactorAuthProps> = ({ enabled, onToggle }) => {
             type="text"
             value={verificationCode}
             onChange={(e) => setVerificationCode(e.target.value)}
-            className="mt-1 block border rounded p-2 w-full max-w-xs"
+            className="mt-1 block w-full max-w-xs border rounded p-2"
           />
         </div>
+      )}
+      {successMessage && (
+        <p className="mt-2 text-green-600 text-sm">{successMessage}</p>
+      )}
+      {errorMessage && (
+        <p className="mt-2 text-red-600 text-sm">{errorMessage}</p>
       )}
     </div>
   );

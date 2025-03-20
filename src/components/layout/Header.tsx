@@ -1,4 +1,4 @@
-// src/components/Layout/Header.tsx
+// src/components/Header.tsx
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -7,18 +7,40 @@ import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "@/store";
 import { logout as logoutAction } from "@/store/authSlice";
 import { useRouter } from "next/router";
+import useSWR from "swr";
+import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
 
-const mockItems = [
-  { id: "perf", label: "Performance Page", url: "/dashboard/performance" },
-  { id: "energy", label: "Energy Page", url: "/dashboard/energy" },
-  { id: "track", label: "Track Health Page", url: "/dashboard/track" },
-  { id: "alerts", label: "Alerts Page", url: "/dashboard/alerts" },
-];
+// Define the navigation item type as returned from the backend
+interface NavigationItem {
+  id: string;
+  label: string;
+  url: string;
+}
 
-const Header = () => {
+// SWR fetcher for navigation items
+const fetchNavigation = async (url: string): Promise<NavigationItem[]> => {
+  const response = await fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+    credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
+  });
+  return handleResponse<NavigationItem[]>(response);
+};
+
+const Header: React.FC = () => {
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<typeof mockItems>([]);
+  const { data: navItems, error: navError } = useSWR<NavigationItem[]>(
+    `${API_BASE_URL}/navigation`,
+    fetchNavigation,
+    { refreshInterval: 60000 } // refresh every 60 seconds
+  );
+  // Dynamically filter navigation items based on the search query
+  const filteredNavItems = navItems
+    ? navItems.filter((item) =>
+        item.label.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [];
+
   const [hasUnread, setHasUnread] = useState(true);
   const user = useSelector((state: RootState) => state.auth.user);
   const dispatch = useDispatch<AppDispatch>();
@@ -27,50 +49,38 @@ const Header = () => {
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
   const handleLogout = async () => {
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (!response.ok) {
-          console.error("Logout API call failed:", response.status);
-        }
-      } catch (error) {
-        console.error("Logout error:", error);
+    try {
+      const token = getToken();
+      if (token) {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          credentials:
+            process.env.NODE_ENV === "production" ? "include" : "omit",
+        });
       }
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("username");
+      dispatch(logoutAction());
+      router.push("/login");
     }
-    // Clear authentication state
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("username");
-    dispatch(logoutAction());
-    router.push("/login");
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    if (!query) {
-      setSearchResults([]);
-      return;
-    }
-    const filtered = mockItems.filter((item) =>
-      item.label.toLowerCase().includes(query.toLowerCase())
-    );
-    setSearchResults(filtered);
+    setSearchQuery(e.target.value);
   };
 
+  // Clear the search query when a navigation item is selected
   const closeSearch = () => {
     setSearchQuery("");
-    setSearchResults([]);
   };
 
   const handleNotificationClick = () => {
-    alert("You have viewed your notifications.");
+    // In production, replace with a proper notification UI rather than an alert.
+    console.info("Notifications clicked.");
     setHasUnread(false);
   };
 
@@ -81,6 +91,7 @@ const Header = () => {
         <button
           className="mr-4 md:hidden focus:outline-none"
           onClick={toggleMobileMenu}
+          aria-label="Toggle mobile menu"
         >
           <FiMenu className="text-2xl" />
         </button>
@@ -105,19 +116,19 @@ const Header = () => {
             placeholder="Search..."
             value={searchQuery}
             onChange={handleSearchChange}
-            className="w-full pl-10 pr-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300 text-black"
+            className="w-full pl-10 pr-4 py-2 rounded-md focus:outline-none"
           />
         </div>
-        {searchResults.length > 0 && (
+        {filteredNavItems.length > 0 && (
           <div className="absolute top-12 w-full max-w-md bg-white text-black rounded-md shadow p-2">
-            {searchResults.map((res) => (
+            {filteredNavItems.map((item) => (
               <Link
-                key={res.id}
-                href={res.url}
+                key={item.id}
+                href={item.url}
                 onClick={closeSearch}
                 className="block px-2 py-1 hover:bg-gray-200"
               >
-                {res.label}
+                {item.label}
               </Link>
             ))}
           </div>
@@ -129,6 +140,7 @@ const Header = () => {
         <button
           onClick={handleNotificationClick}
           className="relative focus:outline-none"
+          aria-label="Notifications"
         >
           <FiBell className="text-2xl" />
           {hasUnread && (
@@ -167,21 +179,27 @@ const Header = () => {
       {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
         <nav className="absolute top-full left-0 w-full bg-blue-600 p-4 md:hidden z-50">
+          {navError && (
+            <p className="text-red-300 mb-2">
+              Error loading navigation: {navError.message}
+            </p>
+          )}
+          {!navItems && !navError && (
+            <p className="text-gray-300 mb-2">Loading navigation...</p>
+          )}
           <ul className="space-y-2">
-            {[
-              { label: "Home (Dashboard)", href: "/" },
-              // Additional mobile nav items can be added here
-            ].map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={toggleMobileMenu}
-                  className="block hover:text-blue-300"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {navItems &&
+              navItems.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={item.url}
+                    onClick={toggleMobileMenu}
+                    className="block hover:text-blue-300"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
             <li>
               {user ? (
                 <button

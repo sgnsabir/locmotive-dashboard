@@ -1,45 +1,21 @@
 // pages/user/[id].tsx
-import React, { FC, useEffect, useState } from "react";
+import React from "react";
 import { useRouter } from "next/router";
+import useSWR from "swr";
+import { getUserById } from "@/api/userManagement";
+import { UserResponse } from "@/types/auth";
 
-interface UserData {
-  username: string;
-  role: string;
-  email?: string;
-  avatar?: string;
-  createdAt?: string;
-}
-
-const UserDetail: FC = () => {
+const UserDetail: React.FC = () => {
   const router = useRouter();
   const { id } = router.query;
-  const [user, setUser] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!id) return;
+  // Use SWR to fetch user details once the id is available
+  const { data: user, error } = useSWR<UserResponse>(
+    id ? `/users/${id}` : null,
+    () => getUserById(Number(id))
+  );
 
-    // Example mock user data
-    const mockUsers: UserData[] = [
-      {
-        username: "admin",
-        role: "admin",
-        email: "admin@example.com",
-        createdAt: "2024-12-31",
-      },
-      {
-        username: "john",
-        role: "operator",
-        email: "john@example.com",
-        createdAt: "2025-01-15",
-      },
-    ];
-    const found = mockUsers.find((u) => u.username === id) || null;
-    setUser(found);
-    setLoading(false);
-  }, [id]);
-
-  if (loading) {
+  if (!id) {
     return (
       <div className="container mx-auto px-4 py-6">
         <p>Loading user details...</p>
@@ -47,10 +23,21 @@ const UserDetail: FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <p className="text-red-500">
+          Error loading user details:{" "}
+          {error instanceof Error ? error.message : "Unknown error"}
+        </p>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-6">
-        <p className="text-red-500">User not found for: {id}</p>
+        <p>Loading user details...</p>
       </div>
     );
   }
@@ -60,7 +47,7 @@ const UserDetail: FC = () => {
       <h1 className="text-2xl font-bold">User: {user.username}</h1>
       <div className="bg-white p-4 rounded-md shadow">
         <p>
-          <strong>Role:</strong> {user.role}
+          <strong>Role:</strong> {user.roles ? user.roles.join(", ") : "N/A"}
         </p>
         {user.email && (
           <p>
@@ -69,7 +56,8 @@ const UserDetail: FC = () => {
         )}
         {user.createdAt && (
           <p>
-            <strong>Joined:</strong> {user.createdAt}
+            <strong>Joined:</strong>{" "}
+            {new Date(user.createdAt).toLocaleDateString()}
           </p>
         )}
       </div>
