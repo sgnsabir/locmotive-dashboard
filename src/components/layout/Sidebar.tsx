@@ -34,14 +34,6 @@ const Sidebar: FC = () => {
           </li>
           <li>
             <Link
-              href="/dashboard/energy"
-              className="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors"
-            >
-              Fuel & Energy Efficiency
-            </Link>
-          </li>
-          <li>
-            <Link
               href="/dashboard/track"
               className="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors"
             >
