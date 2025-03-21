@@ -1,5 +1,4 @@
-// components/widget/WidgetCard.tsx
-import React, { useState } from "react";
+import React, { useState, ChangeEvent } from "react";
 import { COLORS } from "@/constants/chartColors";
 import { formatDate } from "@/utils/dateTime";
 import BasicLineChart from "@/components/charts/BasicLineChart";
@@ -7,7 +6,9 @@ import BasicAreaChart from "@/components/charts/BasicAreaChart";
 import BasicBarChart from "@/components/charts/BasicBarChart";
 import BasicScatterChart from "@/components/charts/BasicScatterChart";
 import BasicPieChart from "@/components/charts/BasicPieChart";
+import { saveWidgets } from "./widgetPersistence";
 
+// Types used in the widget
 export type ChartType = "line" | "area" | "scatter" | "bar" | "pie" | "donut";
 
 export interface DashboardWidget {
@@ -25,12 +26,15 @@ export interface HistoricalRecord {
   [key: string]: unknown;
 }
 
-interface WidgetCardProps {
+export interface WidgetCardProps {
   widget: DashboardWidget;
   updateWidget: (id: string, updated: Partial<DashboardWidget>) => void;
   removeWidget: (id: string) => void;
-  availableMetricOptions: { value: string; label: string }[];
+  availableMetricOptions: { value: string; label: string; color?: string }[];
   filteredData: HistoricalRecord[];
+  // New props for complete widget configuration management
+  allWidgets: DashboardWidget[];
+  setAllWidgets: (widgets: DashboardWidget[]) => void;
 }
 
 const WidgetCard = ({
@@ -39,6 +43,8 @@ const WidgetCard = ({
   removeWidget,
   availableMetricOptions,
   filteredData,
+  allWidgets,
+  setAllWidgets,
 }: WidgetCardProps): React.ReactElement => {
   const [isEditing, setIsEditing] = useState(false);
   const [tempChartType, setTempChartType] = useState<ChartType>(
@@ -47,13 +53,32 @@ const WidgetCard = ({
   const [tempSelectedMetrics, setTempSelectedMetrics] = useState<string[]>(
     widget.selectedMetrics
   );
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleConfirm = () => {
-    updateWidget(widget.id, {
+  // When user confirms changes, update widget configuration and persist via API
+  const handleConfirm = async () => {
+    setIsSaving(true);
+    // Create updated widget object
+    const updatedWidget: Partial<DashboardWidget> = {
       chartType: tempChartType,
       selectedMetrics: tempSelectedMetrics,
-    });
-    setIsEditing(false);
+    };
+    // Update local widget via the provided callback
+    updateWidget(widget.id, updatedWidget);
+    // Update complete widget configuration array
+    const newWidgets = allWidgets.map((w) =>
+      w.id === widget.id ? { ...w, ...updatedWidget } : w
+    );
+    setAllWidgets(newWidgets);
+    try {
+      // Persist updated configuration to the backend
+      await saveWidgets(newWidgets);
+    } catch (err) {
+      console.error("Error saving widget configuration:", err);
+    } finally {
+      setIsSaving(false);
+      setIsEditing(false);
+    }
   };
 
   const handleCancel = () => {
@@ -62,7 +87,7 @@ const WidgetCard = ({
     setIsEditing(false);
   };
 
-  // Transform filteredData into multiSeriesData with a "date" field.
+  // Transform filteredData into chart data format (each record gets a 'date' field)
   const multiSeriesData = filteredData.map((record) => {
     const entry: { date: string } & Record<string, unknown> = {
       date: formatDate(record.timestamp),
@@ -85,7 +110,9 @@ const WidgetCard = ({
             lines={tempSelectedMetrics.map((metric, i) => ({
               dataKey: metric,
               name: metric,
-              color: COLORS[i % COLORS.length],
+              color:
+                availableMetricOptions.find((opt) => opt.value === metric)
+                  ?.color || COLORS[i % COLORS.length],
             }))}
             height={chartHeight}
           />
@@ -98,7 +125,9 @@ const WidgetCard = ({
             areas={tempSelectedMetrics.map((metric, i) => ({
               dataKey: metric,
               name: metric,
-              color: COLORS[i % COLORS.length],
+              color:
+                availableMetricOptions.find((opt) => opt.value === metric)
+                  ?.color || COLORS[i % COLORS.length],
             }))}
             height={chartHeight}
           />
@@ -111,13 +140,15 @@ const WidgetCard = ({
             bars={tempSelectedMetrics.map((metric, i) => ({
               dataKey: metric,
               name: metric,
-              color: COLORS[i % COLORS.length],
+              color:
+                availableMetricOptions.find((opt) => opt.value === metric)
+                  ?.color || COLORS[i % COLORS.length],
             }))}
             height={chartHeight}
           />
         );
       case "scatter": {
-        // For scatter charts, we expect at least two metrics.
+        // For scatter, need at least two metrics
         const xMetric = tempSelectedMetrics[0] || "";
         const yMetric = tempSelectedMetrics[1] || "";
         return (
@@ -128,7 +159,9 @@ const WidgetCard = ({
                 dataKeyX: xMetric,
                 dataKeyY: yMetric,
                 name: `${xMetric} vs ${yMetric}`,
-                color: COLORS[0],
+                color:
+                  availableMetricOptions.find((opt) => opt.value === xMetric)
+                    ?.color || COLORS[0],
               },
             ]}
             height={chartHeight}
@@ -192,7 +225,7 @@ const WidgetCard = ({
                   <input
                     type="checkbox"
                     checked={tempSelectedMetrics.includes(opt.value)}
-                    onChange={(e) => {
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
                       if (e.target.checked) {
                         setTempSelectedMetrics([
                           ...tempSelectedMetrics,
@@ -220,9 +253,10 @@ const WidgetCard = ({
             <>
               <button
                 onClick={handleConfirm}
-                className="bg-green-600 text-white px-2 py-1 rounded text-sm"
+                disabled={isSaving}
+                className="bg-green-600 text-white px-2 py-1 rounded text-sm disabled:opacity-50"
               >
-                Confirm
+                {isSaving ? "Saving..." : "Confirm"}
               </button>
               <button
                 onClick={handleCancel}

@@ -1,29 +1,29 @@
 // src/pages/dashboard/load.tsx
 import React, { FC, useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { getRawData } from "@/api/rawData";
 import { RawDataResponse } from "@/types/rawData";
 import { downloadCSV, downloadJSON } from "@/utils/downloads";
 import { formatDate } from "@/utils/dateTime";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 
-// In a real-world scenario, analysisId would be determined dynamically.
-// For this example, we use a fixed analysisId.
-const analysisId = 1;
-
 const LoadDistributionPage: FC = () => {
-  // State for raw sensor data fetched from backend API.
+  const router = useRouter();
+  const { analysisId: analysisIdQuery } = router.query;
+  // Use dynamic analysisId from the query parameter; default to 1 if not provided.
+  const analysisId =
+    typeof analysisIdQuery === "string" ? parseInt(analysisIdQuery, 10) : 1;
+
   const [rawData, setRawData] = useState<RawDataResponse[]>([]);
-  // Pagination states
   const [page, setPage] = useState<number>(0);
   const [size, setSize] = useState<number>(10);
-  // Sensor type filtering; possible values: "" (all), "axleLoad", "force"
   const [sensorType, setSensorType] = useState<string>("");
-  // Loading and error state management
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch raw sensor data when sensorType, page, or size changes.
   useEffect(() => {
+    // Only fetch data if analysisId is available (router is ready)
+    if (!analysisId) return;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -41,11 +41,9 @@ const LoadDistributionPage: FC = () => {
       }
     };
     fetchData();
-  }, [sensorType, page, size]);
+  }, [analysisId, sensorType, page, size]);
 
   // Transform raw data for charting.
-  // Use the "value" field as the measurement, mapping it as "axle" if sensorType is "axleLoad"
-  // and as "force" if sensorType is "force". For other cases, default to 0.
   const chartData = rawData.map((item) => ({
     date: formatDate(item.createdAt),
     axle: item.sensorType === "axleLoad" ? item.value ?? 0 : 0,
@@ -65,7 +63,7 @@ const LoadDistributionPage: FC = () => {
             <select
               value={sensorType}
               onChange={(e) => setSensorType(e.target.value)}
-              className="mt-1 block border rounded p-2"
+              className="border rounded p-2"
             >
               <option value="">All</option>
               <option value="axleLoad">Axle Load</option>

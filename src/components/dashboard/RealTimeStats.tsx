@@ -1,10 +1,16 @@
 // src/components/dashboard/RealTimeStats.tsx
+
 import React from "react";
 import useSWR from "swr";
 import { getToken, API_BASE_URL, handleResponse } from "@/api/apiHelper";
 import { PredictiveMaintenanceResponse } from "@/types/maintenance";
 
-// Fetcher function to get realtime metrics from the backend endpoint
+// Define props interface to accept a dynamic analysisId from the parent component
+interface RealTimeStatsProps {
+  analysisId: number;
+}
+
+// Fetcher function to get realtime metrics from the backend endpoint using the dynamic analysisId.
 const fetchRealtimeMetrics = async (
   url: string
 ): Promise<PredictiveMaintenanceResponse> => {
@@ -17,10 +23,10 @@ const fetchRealtimeMetrics = async (
   return handleResponse<PredictiveMaintenanceResponse>(response);
 };
 
-const RealTimeStats: React.FC = () => {
-  // For demonstration, we're using analysisId=1. In production, this value can be dynamic.
+const RealTimeStats: React.FC<RealTimeStatsProps> = ({ analysisId }) => {
+  // Use the dynamic analysisId in the API URL
   const { data, error } = useSWR<PredictiveMaintenanceResponse>(
-    `${API_BASE_URL}/realtime/metrics/1`,
+    `${API_BASE_URL}/realtime/metrics/${analysisId}`,
     fetchRealtimeMetrics,
     { refreshInterval: 10000 } // Refresh every 10 seconds
   );
@@ -44,7 +50,7 @@ const RealTimeStats: React.FC = () => {
     );
   }
 
-  // Derive dynamic values based on the riskScore from the realtime metrics.
+  // Compute derived dynamic values
   const riskScore = data.riskScore;
   const status =
     riskScore < 0.3
@@ -54,8 +60,7 @@ const RealTimeStats: React.FC = () => {
       : "Maintenance Required";
   const delay =
     riskScore < 0.3 ? "0 min" : riskScore < 0.7 ? "5 min" : "10 min";
-  // For demonstration, attempt to extract "Next Stop" from predictionMessage if available,
-  // otherwise default to "Central Station".
+
   let nextStop = "Central Station";
   if (data.predictionMessage && data.predictionMessage.includes("Next Stop:")) {
     const parts = data.predictionMessage.split("Next Stop:");

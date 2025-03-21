@@ -1,5 +1,6 @@
 // src/pages/dashboard/historical.tsx
 import React, { FC, useState, useMemo, ChangeEvent } from "react";
+import { useRouter } from "next/router";
 import { Responsive, WidthProvider, Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -10,72 +11,16 @@ import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
 import { HistoricalDataResponse } from "@/types/historicalData";
 import { formatDate } from "@/utils/dateTime";
-import { HistoricalRecord } from "@/components/widget/WidgetCard";
-import WidgetCard, { DashboardWidget } from "@/components/widget/WidgetCard";
+import {
+  HistoricalRecord,
+  DashboardWidget,
+} from "@/components/widget/WidgetCard";
+import WidgetCard from "@/components/widget/WidgetCard";
 
-const sensorCategoryMapping: Record<string, string[]> = {
-  performance: ["speed", "acceleration"],
-  load: ["axleLoad", "vibration"],
-  track: [
-    "lateralForceLeft",
-    "lateralForceRight",
-    "verticalForceLeft",
-    "verticalForceRight",
-  ],
-  steering: ["angleOfAttack", "lateralVerticalRatio"],
-};
+// Define a union type for valid sensor categories.
+type SensorCategory = "performance" | "load" | "track" | "steering";
 
-const sensorCategoryOptions = [
-  { value: "performance", label: "Performance" },
-  { value: "load", label: "Load" },
-  { value: "track", label: "Track" },
-  { value: "steering", label: "Steering" },
-];
-
-export const metricOptions = [
-  { value: "speed", label: "Speed (km/h)", color: "#8884d8" },
-  { value: "acceleration", label: "Acceleration (m/s²)", color: "#82ca9d" },
-  { value: "axleLoad", label: "Axle Load (tons)", color: "#ffc658" },
-  { value: "vibration", label: "Vibration (m/s²)", color: "#ff8042" },
-  {
-    value: "lateralForceLeft",
-    label: "Lateral Force Left (kN)",
-    color: "#8dd1e1",
-  },
-  {
-    value: "lateralForceRight",
-    label: "Lateral Force Right (kN)",
-    color: "#a4de6c",
-  },
-  {
-    value: "verticalForceLeft",
-    label: "Vertical Force Left (kN)",
-    color: "#8884d8",
-  },
-  {
-    value: "verticalForceRight",
-    label: "Vertical Force Right (kN)",
-    color: "#82ca9d",
-  },
-  { value: "angleOfAttack", label: "Angle of Attack (°)", color: "#ffc658" },
-  {
-    value: "lateralVerticalRatio",
-    label: "Lateral/Vertical Ratio",
-    color: "#ff8042",
-  },
-];
-
-// Analysis ID (this could be made dynamic)
-const analysisId = 1;
-
-// SWR fetcher for historical data
-const fetcher = (url: string) =>
-  fetch(url, {
-    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
-    credentials: "include",
-  }).then((res) => handleResponse<HistoricalDataResponse>(res));
-
-// Default widget configuration
+// Default widget configuration remains unchanged.
 const defaultWidget: DashboardWidget = {
   id: "widget-1",
   chartType: "line",
@@ -86,23 +31,34 @@ const defaultWidget: DashboardWidget = {
   h: 10,
 };
 
+// SWR fetcher function
+const fetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+    credentials: "include",
+  }).then((res) => handleResponse<HistoricalDataResponse>(res));
+
 const Historical: FC = () => {
-  // Fetch historical data from backend
+  // Derive dynamic analysisId from the URL query parameters using useRouter
+  const router = useRouter();
+  const { analysisId: analysisIdQuery } = router.query;
+  const analysisId =
+    typeof analysisIdQuery === "string" ? parseInt(analysisIdQuery, 10) : 1;
+
+  // Fetch historical data dynamically using the derived analysisId
   const { data: historicalResponse, error } = useSWR<HistoricalDataResponse>(
     `${API_BASE_URL}/dashboard/historical/${analysisId}`,
     fetcher,
     { refreshInterval: 60000 }
   );
 
-  // Convert fetched data to the structure expected by WidgetCard:
-  // Each record must have a 'date' property (string) and numeric metric values.
+  // Convert fetched metricsHistory into historical records with a formatted date property
   const historicalRecords: HistoricalRecord[] = useMemo(() => {
     const metricsHistory = historicalResponse?.metricsHistory ?? [];
     return metricsHistory.map((item: SensorMetricsDTO) => {
       const record: Record<string, number | string> = {
         date: formatDate(item.createdAt),
       };
-      // Copy numeric properties from the fetched item in a type-safe way
       (Object.keys(item) as (keyof SensorMetricsDTO)[]).forEach((key) => {
         const value = item[key];
         if (typeof value === "number") {
@@ -113,27 +69,99 @@ const Historical: FC = () => {
     });
   }, [historicalResponse]);
 
-  // Date range filter using our hook (expects objects with a 'date' property)
+  // Use date range filter hook (expects objects with a 'date' property)
   const { startDate, endDate, filteredData, setStartDate, setEndDate } =
     useDateRangeFilter<HistoricalRecord>(historicalRecords);
 
-  // Sensor category filtering state
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  // Memoize sensor category mapping with an explicit type.
+  const sensorCategoryMapping = useMemo<Record<SensorCategory, string[]>>(
+    () => ({
+      performance: ["speed", "acceleration"],
+      load: ["axleLoad", "vibration"],
+      track: [
+        "lateralForceLeft",
+        "lateralForceRight",
+        "verticalForceLeft",
+        "verticalForceRight",
+      ],
+      steering: ["angleOfAttack", "lateralVerticalRatio"],
+    }),
+    []
+  );
+
+  // Memoize sensor category options.
+  const sensorCategoryOptions = useMemo<
+    { value: SensorCategory; label: string }[]
+  >(
+    () => [
+      { value: "performance", label: "Performance" },
+      { value: "load", label: "Load" },
+      { value: "track", label: "Track" },
+      { value: "steering", label: "Steering" },
+    ],
+    []
+  );
+
+  // Memoize metric options.
+  const metricOptions = useMemo(
+    () => [
+      { value: "speed", label: "Speed (km/h)", color: "#8884d8" },
+      { value: "acceleration", label: "Acceleration (m/s²)", color: "#82ca9d" },
+      { value: "axleLoad", label: "Axle Load (tons)", color: "#ffc658" },
+      { value: "vibration", label: "Vibration (m/s²)", color: "#ff8042" },
+      {
+        value: "lateralForceLeft",
+        label: "Lateral Force Left (kN)",
+        color: "#8dd1e1",
+      },
+      {
+        value: "lateralForceRight",
+        label: "Lateral Force Right (kN)",
+        color: "#a4de6c",
+      },
+      {
+        value: "verticalForceLeft",
+        label: "Vertical Force Left (kN)",
+        color: "#8884d8",
+      },
+      {
+        value: "verticalForceRight",
+        label: "Vertical Force Right (kN)",
+        color: "#82ca9d",
+      },
+      {
+        value: "angleOfAttack",
+        label: "Angle of Attack (°)",
+        color: "#ffc658",
+      },
+      {
+        value: "lateralVerticalRatio",
+        label: "Lateral/Vertical Ratio",
+        color: "#ff8042",
+      },
+    ],
+    []
+  );
+
+  // Define selected sensor categories.
+  const [selectedCategories, setSelectedCategories] = useState<
+    SensorCategory[]
+  >([]);
   const availableMetricOptions = useMemo(() => {
     if (selectedCategories.length === 0) return metricOptions;
     const allowedMetrics = selectedCategories.flatMap(
       (cat) => sensorCategoryMapping[cat] || []
     );
     return metricOptions.filter((opt) => allowedMetrics.includes(opt.value));
-  }, [selectedCategories]);
+  }, [selectedCategories, metricOptions, sensorCategoryMapping]);
 
   // Widget grid state
   const [widgets, setWidgets] = useState<DashboardWidget[]>([defaultWidget]);
   const ResponsiveGridLayout = WidthProvider(Responsive);
 
   const onLayoutChange = (layout: Layout[]) => {
-    setWidgets((prev) =>
-      prev.map((widget) => {
+    setWidgets((prevWidgets) =>
+      prevWidgets.map((widget) => {
         const found = layout.find((l) => l.i === widget.id);
         return found
           ? { ...widget, x: found.x, y: found.y, w: found.w, h: found.h }
@@ -142,19 +170,23 @@ const Historical: FC = () => {
     );
   };
 
-  const addWidget = () => {
-    const newId = `widget-${widgets.length + 1}`;
-    setWidgets([...widgets, { ...defaultWidget, id: newId }]);
+  const updateWidget = (id: string, updated: Partial<DashboardWidget>) => {
+    setWidgets((prevWidgets) =>
+      prevWidgets.map((widget) =>
+        widget.id === id ? { ...widget, ...updated } : widget
+      )
+    );
   };
 
   const removeWidget = (id: string) => {
-    setWidgets((prev) => prev.filter((w) => w.id !== id));
+    setWidgets((prevWidgets) =>
+      prevWidgets.filter((widget) => widget.id !== id)
+    );
   };
 
-  const updateWidget = (id: string, updated: Partial<DashboardWidget>) => {
-    setWidgets((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, ...updated } : w))
-    );
+  const addWidget = () => {
+    const newId = `widget-${widgets.length + 1}`;
+    setWidgets([...widgets, { ...defaultWidget, id: newId }]);
   };
 
   return (
@@ -251,6 +283,8 @@ const Historical: FC = () => {
               removeWidget={removeWidget}
               availableMetricOptions={availableMetricOptions}
               filteredData={filteredData}
+              allWidgets={widgets}
+              setAllWidgets={setWidgets}
             />
           </div>
         ))}

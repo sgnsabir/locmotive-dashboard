@@ -1,6 +1,8 @@
 // src/components/dashboard/HomeDashboard.tsx
+
 import React, { FC } from "react";
 import useSWR from "swr";
+import { useRouter } from "next/router";
 import KPICard from "@/components/dashboard/KPICard";
 import RealTimeStats from "@/components/dashboard/RealTimeStats";
 import HistoricalTrends from "@/components/dashboard/HistoricalTrends";
@@ -9,7 +11,7 @@ import { SensorMetricsDTO } from "@/types/sensorMetrics";
 import { getToken, API_BASE_URL, handleResponse } from "@/api/apiHelper";
 import { MaintenanceRecord } from "@/types/maintenance";
 
-// Define a fetcher for SWR to get the latest sensor metrics
+// SWR fetcher for latest sensor metrics
 const metricsFetcher = (url: string) =>
   fetch(url, {
     headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
@@ -24,21 +26,26 @@ const maintenanceFetcher = (url: string) =>
   }).then((res) => handleResponse<MaintenanceRecord[]>(res));
 
 const HomeDashboard: FC = () => {
-  // Fixed analysisId=1 for demonstration; may come from dynamic state in production.
+  const router = useRouter();
+  // Dynamically extract analysisId from query parameters; default to 1 if not provided.
+  const analysisIdQuery = router.query.analysisId;
+  const analysisId = analysisIdQuery ? Number(analysisIdQuery) : 1;
+
+  // Fetch latest sensor metrics using dynamic analysisId.
   const { data: metrics, error: metricsError } = useSWR<SensorMetricsDTO>(
-    `${API_BASE_URL}/dashboard/latest/1`,
+    `${API_BASE_URL}/dashboard/latest/${analysisId}`,
     metricsFetcher,
     { refreshInterval: 30000 }
   );
 
-  // Fetch maintenance schedule using SWR
+  // Maintenance schedule is fetched from its endpoint (independent of analysisId).
   const { data: maintenanceSchedule, error: maintenanceError } = useSWR<
     MaintenanceRecord[]
   >(`${API_BASE_URL}/maintenance/schedule`, maintenanceFetcher, {
     refreshInterval: 60000,
   });
 
-  // Map the fetched metrics to KPI card data
+  // Map fetched metrics into KPI card data.
   const kpiData = [
     {
       title: "Average Speed",
@@ -63,7 +70,6 @@ const HomeDashboard: FC = () => {
     },
     {
       title: "Health Score",
-      // Assuming riskScore is between 0 and 1, convert to percentage health score (100 - risk*100)
       value:
         metrics?.riskScore !== undefined
           ? `${(100 - metrics.riskScore * 100).toFixed(0)}%`
@@ -92,11 +98,13 @@ const HomeDashboard: FC = () => {
       </section>
 
       <section>
-        <RealTimeStats />
+        {/* Pass the dynamic analysisId to RealTimeStats */}
+        <RealTimeStats analysisId={analysisId} />
       </section>
 
       <section>
-        <HistoricalTrends />
+        {/* Pass the dynamic analysisId to HistoricalTrends */}
+        <HistoricalTrends analysisId={analysisId} />
       </section>
 
       {/* Upcoming Maintenance Section */}

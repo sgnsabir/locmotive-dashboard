@@ -1,20 +1,57 @@
-// src/components/widget/widgetPersistence.ts
+import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
 import type { DashboardWidget } from "./WidgetCard";
 
-export const loadWidgets = (): DashboardWidget[] => {
+/**
+ * Loads the user's dashboard widget configuration from the backend.
+ * Expects the backend GET /users/settings endpoint to return a JSON object with a "dashboardWidgets" property.
+ *
+ * @returns A Promise that resolves to an array of DashboardWidget.
+ */
+export async function loadWidgets(): Promise<DashboardWidget[]> {
   try {
-    const widgets = localStorage.getItem("dashboardWidgets");
-    return widgets ? (JSON.parse(widgets) as DashboardWidget[]) : [];
+    const token = getToken();
+    const response = await fetch(`${API_BASE_URL}/users/settings`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
+    });
+    // Assuming backend returns an object: { dashboardWidgets: DashboardWidget[] }
+    const data = await handleResponse<{ dashboardWidgets: DashboardWidget[] }>(
+      response
+    );
+    return data.dashboardWidgets || [];
   } catch (err) {
-    console.error("Error loading widgets:", err);
+    console.error("Error loading widget configuration from backend:", err);
     return [];
   }
-};
+}
 
-export const saveWidgets = (widgets: DashboardWidget[]): void => {
+/**
+ * Saves the user's dashboard widget configuration to the backend.
+ * Sends a PUT request to the backend /users/settings endpoint with the updated configuration.
+ *
+ * @param widgets - The updated array of DashboardWidget to persist.
+ * @returns A Promise that resolves when the update is complete.
+ */
+export async function saveWidgets(widgets: DashboardWidget[]): Promise<void> {
   try {
-    localStorage.setItem("dashboardWidgets", JSON.stringify(widgets));
+    const token = getToken();
+    const payload = { dashboardWidgets: widgets };
+    const response = await fetch(`${API_BASE_URL}/users/settings`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
+      body: JSON.stringify(payload),
+    });
+    await handleResponse(response);
   } catch (err) {
-    console.error("Error saving widgets:", err);
+    console.error("Error saving widget configuration to backend:", err);
+    throw err;
   }
-};
+}

@@ -1,22 +1,21 @@
-// src/pages/dashboard/dynamic-visuals.tsx
 import React, { FC, useState, useMemo, ChangeEvent } from "react";
+import { useRouter } from "next/router";
 import useSWR from "swr";
 import { downloadCSV, downloadJSON } from "@/utils/downloads";
 import { formatDate } from "@/utils/dateTime";
+import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { HistoricalDataResponse } from "@/types/historicalData";
+import { SensorMetricsDTO } from "@/types/sensorMetrics";
+import { COLORS } from "@/constants/chartColors";
+import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
+
+// Import chart components
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import BasicAreaChart from "@/components/charts/BasicAreaChart";
 import BasicBarChart from "@/components/charts/BasicBarChart";
 import BasicScatterChart from "@/components/charts/BasicScatterChart";
 import BasicPieChart from "@/components/charts/BasicPieChart";
-import { COLORS } from "@/constants/chartColors";
-import { useDateRangeFilter } from "@/hooks/useDateRangeFilter";
-import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
-import { HistoricalDataResponse } from "@/types/historicalData";
-import { SensorMetricsDTO } from "@/types/sensorMetrics";
 
-// ----------------------------------------------------------------------
-// performance, load, track & steering.
-// ----------------------------------------------------------------------
 const sensorCategoryMapping: Record<string, string[]> = {
   performance: ["speed", "acceleration"],
   load: ["axleLoad", "vibration"],
@@ -80,41 +79,37 @@ const chartTypeOptions: { value: ChartType; label: string }[] = [
   { value: "donut", label: "Donut Chart" },
 ];
 
-const analysisId = 1;
-
-// Define a fetcher for SWR to call the historical data endpoint.
-const fetcher = (url: string) =>
-  fetch(url, {
-    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
-    credentials: "include",
-  }).then((res) => handleResponse<HistoricalDataResponse>(res));
-
-// Extend SensorMetricsDTO to include a timestamp (using createdAt).
-type DynamicSensorMetrics = SensorMetricsDTO & {
-  timestamp: string;
-  [key: string]: number | string;
-};
-
 const DynamicVisuals: FC = () => {
+  // Use useRouter inside the component as required by hooks rules.
+  const router = useRouter();
+  const { analysisId: analysisIdQuery } = router.query;
+  const analysisId =
+    typeof analysisIdQuery === "string" ? parseInt(analysisIdQuery, 10) : 1;
+
   // Fetch historical data using SWR.
   const { data: historicalDataResponse, error } =
     useSWR<HistoricalDataResponse>(
       `${API_BASE_URL}/dashboard/historical/${analysisId}`,
-      fetcher,
+      (url: string) =>
+        fetch(url, {
+          headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
+          credentials: "include",
+        }).then((res) => handleResponse<HistoricalDataResponse>(res)),
       { refreshInterval: 60000 }
     );
 
   // Map fetched metricsHistory to include a 'timestamp' property.
-  const historicalDataWithTimestamp: DynamicSensorMetrics[] = useMemo(() => {
-    return (historicalDataResponse?.metricsHistory ?? []).map((item) => ({
+  const historicalDataWithTimestamp = useMemo(() => {
+    const metricsHistory = historicalDataResponse?.metricsHistory ?? [];
+    return metricsHistory.map((item: SensorMetricsDTO) => ({
       ...item,
       timestamp: item.createdAt,
     }));
   }, [historicalDataResponse]);
 
-  // useDateRangeFilter requires objects with a 'timestamp' property.
+  // useDateRangeFilter expects objects with a 'timestamp' property.
   const { startDate, endDate, filteredData, setStartDate, setEndDate } =
-    useDateRangeFilter<DynamicSensorMetrics>(historicalDataWithTimestamp);
+    useDateRangeFilter(historicalDataWithTimestamp);
 
   const [chartType, setChartType] = useState<ChartType>("line");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -135,7 +130,7 @@ const DynamicVisuals: FC = () => {
     );
   }, [availableMetricOptions]);
 
-  // Build multi-series chart data. For each record, compute derived values based on the selected metric.
+  // Build multi-series chart data.
   const multiSeriesData = useMemo(() => {
     return filteredData.map((record) => {
       const entry: { date: string } & Record<string, number | string> = {
@@ -322,6 +317,9 @@ const DynamicVisuals: FC = () => {
                       dataKeyX: selectedMetrics[0],
                       dataKeyY: selectedMetrics[1],
                       name: `${selectedMetrics[0]} vs ${selectedMetrics[1]}`,
+                      color: availableMetricOptions.find(
+                        (opt) => opt.value === selectedMetrics[0]
+                      )?.color,
                     },
                   ]
                 : []
@@ -360,7 +358,10 @@ const DynamicVisuals: FC = () => {
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
       <h1 className="text-3xl font-bold mb-4">Dynamic Visualizations</h1>
+
+      {/* Global Filters & Export */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
+        <h2 className="text-xl font-semibold">Global Filters & Export</h2>
         <div className="flex flex-wrap items-center gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
@@ -402,7 +403,10 @@ const DynamicVisuals: FC = () => {
           </button>
         </div>
       </section>
+
+      {/* Sensor Category Filter */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
+        <h2 className="text-xl font-semibold">Filter by Sensor Category</h2>
         <div className="flex flex-wrap items-center gap-4">
           {sensorCategoryOptions.map((opt) => (
             <label key={opt.value} className="flex items-center space-x-2">
@@ -423,27 +427,8 @@ const DynamicVisuals: FC = () => {
           ))}
         </div>
       </section>
-      <section className="bg-white p-4 rounded-md shadow space-y-4">
-        <div className="flex flex-wrap gap-4">
-          {availableMetricOptions.map((opt) => (
-            <label key={opt.value} className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                checked={selectedMetrics.includes(opt.value)}
-                onChange={(e) =>
-                  setSelectedMetrics(
-                    e.target.checked
-                      ? [...selectedMetrics, opt.value]
-                      : selectedMetrics.filter((m) => m !== opt.value)
-                  )
-                }
-                className="h-4 w-4"
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      </section>
+
+      {/* Chart Type Selection */}
       <section className="bg-white p-4 rounded-md shadow">
         <select
           value={chartType}
@@ -457,6 +442,8 @@ const DynamicVisuals: FC = () => {
           ))}
         </select>
       </section>
+
+      {/* Chart Display */}
       <section className="bg-white p-4 rounded-md shadow">
         {error && (
           <p className="text-red-600">

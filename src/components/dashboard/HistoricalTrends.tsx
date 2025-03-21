@@ -1,4 +1,4 @@
-// src/pages/dashboard/historicalTrends.tsx
+// src/components/dashboard/HistoricalTrends.tsx
 import React, { FC, useMemo } from "react";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import useSWR from "swr";
@@ -6,6 +6,11 @@ import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
 import { formatDate } from "@/utils/dateTime";
 import { HistoricalTrendsResponse } from "@/types/historicalData";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
+
+interface HistoricalTrendsProps {
+  // Dynamic analysisId provided from parent (e.g. via Redux, router query, or settings)
+  analysisId?: number;
+}
 
 // Generic fetcher function using the API helper
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -19,22 +24,20 @@ const fetcher = async <T,>(url: string): Promise<T> => {
   return handleResponse<T>(response);
 };
 
-const HistoricalTrends: FC = () => {
-  // Fetch the latest sensor metrics to get the dynamic analysisId.
-  // In production, the analysisId could come from user selection or a dashboard setting.
+const HistoricalTrends: FC<HistoricalTrendsProps> = ({ analysisId = 1 }) => {
+  // Fetch latest metrics using the dynamic analysisId prop.
   const {
     data: latestMetrics,
     error: latestError,
     isValidating: latestLoading,
-  } = useSWR<SensorMetricsDTO>(`${API_BASE_URL}/dashboard/latest/1`, fetcher, {
-    refreshInterval: 60000,
-  });
+  } = useSWR<SensorMetricsDTO>(
+    `${API_BASE_URL}/dashboard/latest/${analysisId}`,
+    fetcher,
+    { refreshInterval: 60000 }
+  );
 
-  // Once we have the latest metrics, use its analysisId to fetch historical trends.
-  const historicalEndpoint = latestMetrics
-    ? `${API_BASE_URL}/dashboard/historical/${latestMetrics.analysisId}`
-    : null;
-
+  // Use the provided analysisId directly for fetching historical trends.
+  const historicalEndpoint = `${API_BASE_URL}/dashboard/historical/${analysisId}`;
   const {
     data: historicalData,
     error: historicalError,
@@ -44,7 +47,6 @@ const HistoricalTrends: FC = () => {
   });
 
   // Map the historical trends into the format expected by the chart.
-  // Each record will have a date, lastTripSpeed, and currentTripSpeed.
   const trendData = useMemo(() => {
     if (!historicalData || !historicalData.metricsHistory) return [];
     return historicalData.metricsHistory.map((record) => ({
@@ -54,7 +56,6 @@ const HistoricalTrends: FC = () => {
     }));
   }, [historicalData]);
 
-  // Display error messages if either fetch failed.
   if (latestError || historicalError) {
     const errorMessage =
       (latestError && (latestError as Error).message) ||
@@ -70,7 +71,6 @@ const HistoricalTrends: FC = () => {
     );
   }
 
-  // While either the latest metrics or historical data is loading, show a loading indicator.
   if (latestLoading || historicalLoading || !latestMetrics || !historicalData) {
     return (
       <div className="bg-white p-4 rounded-md shadow">
