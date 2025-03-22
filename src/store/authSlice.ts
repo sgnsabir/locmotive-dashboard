@@ -1,5 +1,4 @@
 // src/store/authSlice.ts
-
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { login as loginApi, getCurrentUser } from "@/api/auth";
 import { UserResponse, LoginResponse } from "@/types/auth";
@@ -31,37 +30,46 @@ const initialState: AuthState = {
   error: null,
 };
 
-// Async thunk for login
+/**
+ * Async thunk for login.
+ * This thunk calls the backend login API and then fetches current user details.
+ * Additional debug logs are added to help trace the login flow.
+ */
 export const loginThunk = createAsyncThunk<
   { user: User; token: string; expiresIn: number },
   { username: string; password: string },
   { rejectValue: string }
 >("auth/login", async ({ username, password }, thunkAPI) => {
+  console.debug("loginThunk: Attempting login with username:", username);
   try {
-    // Call backend login API; it returns LoginResponse (token and expiresIn)
     const loginResponse: LoginResponse = await loginApi(username, password);
-    // After login, call getCurrentUser to fetch full user details.
+    console.debug("loginThunk: Received loginResponse:", loginResponse);
     const userResponse: UserResponse = await getCurrentUser();
-    // Ensure that the user has a role. If missing, throw an error.
+    console.debug("loginThunk: Received userResponse:", userResponse);
     if (!userResponse.roles || userResponse.roles.length === 0) {
+      console.error(
+        "loginThunk: User role is missing in response",
+        userResponse
+      );
       return thunkAPI.rejectWithValue("User role is missing in response");
     }
-    // Map UserResponse to our Redux User type.
     const user: User = {
       id: userResponse.id,
       username: userResponse.username,
       email: userResponse.email,
-      role: userResponse.roles[0], // use the first role from the roles array
+      role: userResponse.roles[0],
       avatar: userResponse.avatar,
       twoFactorEnabled: userResponse.twoFactorEnabled,
       phone: userResponse.phone,
     };
+    console.debug("loginThunk: Login successful, dispatching user:", user);
     return {
       user,
       token: loginResponse.token,
       expiresIn: loginResponse.expiresIn,
     };
   } catch (error) {
+    console.error("loginThunk: Error during login process:", error);
     if (error instanceof Error) {
       return thunkAPI.rejectWithValue(error.message || "Login failed");
     } else {
@@ -80,7 +88,6 @@ const authSlice = createSlice({
       state.expiresIn = null;
       state.error = null;
       state.loading = false;
-      // Optionally clear token from localStorage
       localStorage.removeItem("authToken");
     },
   },
@@ -105,7 +112,6 @@ const authSlice = createSlice({
           state.token = action.payload.token;
           state.expiresIn = action.payload.expiresIn;
           state.error = null;
-          // Store token in localStorage if needed (consider secure alternatives in production)
           localStorage.setItem("authToken", action.payload.token);
         }
       )

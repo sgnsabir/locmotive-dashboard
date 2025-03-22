@@ -1,15 +1,22 @@
 // src/pages/login.tsx
-
-import React, { useState, FormEvent } from "react";
-import { useDispatch } from "react-redux";
+import React, { useState, FormEvent, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
-import { loginSuccess } from "@/store/authSlice"; // Use named import for the action creator
-import { login as loginApi } from "@/api";
-import type { AppDispatch } from "@/store";
+import { loginThunk } from "@/store/authSlice";
+import type { AppDispatch, RootState } from "@/store";
 
 const LoginPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
+  const user = useSelector((state: RootState) => state.auth.user);
+
+  // If the user is already logged in, redirect to home
+  useEffect(() => {
+    if (user) {
+      router.push("/");
+    }
+  }, [user, router]);
+
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -20,24 +27,8 @@ const LoginPage: React.FC = () => {
     setError("");
     setLoading(true);
     try {
-      const response = await loginApi(username, password);
-      // For simplicity, storing token in localStorage (consider using HTTP-only cookies in production)
-      localStorage.setItem("authToken", response.token);
-      localStorage.setItem("username", response.username);
-      // Dispatch loginSuccess with the correct payload shape
-      dispatch(
-        loginSuccess({
-          user: {
-            username: response.username,
-            role: "operator", // Adjust based on backend response if available
-            email: "", // Optionally set if provided
-            avatar: "", // Optionally set if provided
-            twoFactorEnabled: false,
-          },
-          token: response.token,
-          expiresIn: response.expiresIn,
-        })
-      );
+      // Dispatch the async thunk; unwrap to catch errors if any
+      await dispatch(loginThunk({ username, password })).unwrap();
       router.push("/");
     } catch (err: unknown) {
       if (err instanceof Error) {
