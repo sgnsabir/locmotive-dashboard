@@ -1,29 +1,64 @@
 // src/api/apiHelper.ts
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-const isProduction = process.env.NODE_ENV === "production";
 
 /**
- * Retrieve the JWT token from storage.
- * In production, tokens are managed via HTTP‑only cookies.
+ * Retrieve the JWT token from localStorage if available.
+ * Safe for use in SSR by checking for window.
  */
 export function getToken(): string | null {
-  return isProduction ? null : localStorage.getItem("authToken");
+  try {
+    return typeof window !== "undefined"
+      ? localStorage.getItem("authToken")
+      : null;
+  } catch (e) {
+    console.error("Error accessing localStorage:", e);
+    return null;
+  }
 }
 
 /**
- * Global error handler for API responses.
- * Throws an Error with a descriptive message if the response is not ok.
+ * Save a JWT token to localStorage.
+ */
+export function setToken(token: string): void {
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("authToken", token);
+    }
+  } catch (e) {
+    console.error("Error saving token to localStorage:", e);
+  }
+}
+
+/**
+ * Clear the JWT token from localStorage.
+ */
+export function clearToken(): void {
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("authToken");
+    }
+  } catch (e) {
+    console.error("Error clearing token from localStorage:", e);
+  }
+}
+
+/**
+ * Handles the response from a fetch call.
+ * If not OK, extracts and logs an error message then throws.
  */
 export async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let errorMsg = `HTTP error! status: ${response.status}`;
+    let errorMsg = `HTTP error ${response.status}`;
     try {
       const errorData = await response.json();
       errorMsg = errorData.message || errorMsg;
-    } catch (e) {
-      console.error("Error parsing error response:", e);
+    } catch (err) {
+      console.error("Error parsing error response:", err);
     }
+    console.error("API call failed:", errorMsg, {
+      status: response.status,
+      url: response.url,
+    });
     throw new Error(errorMsg);
   }
   if (response.status === 204) {
@@ -33,58 +68,26 @@ export async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 /**
- * Refresh the JWT token.
- * In production, the new token is set automatically via HTTP‑only cookies.
- */
-export async function refreshToken(): Promise<void> {
-  const token = getToken();
-  if (!token && !isProduction) {
-    throw new Error("No token available for refresh");
-  }
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(isProduction ? {} : { Authorization: `Bearer ${token}` }),
-      },
-      ...(isProduction ? { credentials: "include" } : {}),
-    });
-    if (!response.ok) {
-      throw new Error("Failed to refresh token");
-    }
-    const data = await response.json();
-    if (data && data.token && !isProduction) {
-      localStorage.setItem("authToken", data.token);
-    }
-  } catch (error) {
-    console.error("Error during token refresh:", error);
-    throw error;
-  }
-}
-
-/**
- * A centralized fetch wrapper that includes authentication headers,
- * handles token refresh on 401 responses, and throws on 403 responses.
+ * A centralized fetch wrapper that automatically includes the Authorization header,
+ * proper CORS and credentials options, and robust error handling.
  */
 export async function fetchWithAuth(
   url: string,
-  options: RequestInit = {}
+  options?: RequestInit
 ): Promise<Response> {
+  options = options || {};
+  // Ensure cross-origin requests and that cookies (or HTTP‑only tokens) are sent
+  options.mode = "cors";
+  options.credentials = "include";
+
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
 
-  if (!isProduction) {
-    const token = getToken();
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
   options.headers = headers;
-
-  if (isProduction) {
-    options.credentials = "include";
-  }
 
   let response: Response;
   try {
@@ -94,31 +97,22 @@ export async function fetchWithAuth(
     throw new Error("Network error. Please check your connection.");
   }
 
+  // Handle unauthorized access by redirecting the user
   if (response.status === 401) {
-    try {
-      await refreshToken();
-      const newToken = getToken();
-      if (newToken) {
-        headers.set("Authorization", `Bearer ${newToken}`);
-        options.headers = headers;
-        response = await fetch(url, options);
-      } else {
-        throw new Error("Token refresh did not yield a new token");
-      }
-    } catch {
-      throw new Error("Session expired. Please login again.");
-    }
+    clearToken();
+    window.location.href = "/login?message=Session%20expired";
+    throw new Error("Session expired. Please login again.");
   }
-
   if (response.status === 403) {
-    throw new Error("Not Authorized");
+    clearToken();
+    window.location.href = "/403";
+    throw new Error("Not authorized.");
   }
   return response;
 }
 
 /**
- * Helper function to perform an API fetch call that automatically
- * includes the base URL and handles authentication.
+ * A helper function to perform fetch calls with automatic auth handling and error processing.
  */
 export async function apiFetch<T>(
   endpoint: string,
@@ -127,24 +121,6 @@ export async function apiFetch<T>(
   const url = `${API_BASE_URL}${endpoint}`;
   const response = await fetchWithAuth(url, options);
   return handleResponse<T>(response);
-}
-
-/**
- * Send a verification code by calling the dedicated backend endpoint.
- * This function triggers the backend to send a verification code
- * to the user (e.g., via email or SMS).
- */
-export async function sendVerificationCode(): Promise<{ message: string }> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/auth/send-verification-code`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(isProduction ? { credentials: "include" } : {}),
-  });
-  return handleResponse<{ message: string }>(response);
 }
 
 export { API_BASE_URL };

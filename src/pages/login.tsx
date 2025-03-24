@@ -31,7 +31,10 @@ const LoginPage: React.FC = () => {
       await dispatch(loginThunk({ username, password })).unwrap();
       router.push("/");
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      // Updated error handling: check for string errors as well as Error objects.
+      if (typeof err === "string") {
+        setError(err);
+      } else if (err instanceof Error) {
         setError(err.message);
       } else {
         setError("An unknown error occurred.");
