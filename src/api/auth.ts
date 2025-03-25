@@ -1,12 +1,4 @@
-/**
- * src/api/auth.ts
- *
- * Handles authentication API calls using token‑based authentication.
- * The backend (built with WebFlux R2DBC) expects the JWT in the Authorization header.
- * This implementation includes robust error handling, explicit CORS settings,
- * and secure token management.
- */
-
+// src/api/auth.ts
 import {
   LoginResponse,
   UserResponse,
@@ -14,44 +6,29 @@ import {
   ChangePasswordRequest,
   PasswordResetRequest,
 } from "@/types/auth";
-import { API_BASE_URL } from "@/api/apiHelper";
+import { API_BASE_URL, getToken, setToken, clearToken } from "@/api/apiHelper";
 
 /**
- * Retrieves the JWT token from localStorage.
- */
-export function getToken(): string | null {
-  try {
-    if (typeof window === "undefined") {
-      throw new Error("localStorage is not available on the server.");
-    }
-    return localStorage.getItem("authToken");
-  } catch (e) {
-    console.error("Error accessing localStorage:", e);
-    return null;
-  }
-}
-
-/**
- * Fetches the current user information using token-based authentication.
- * The backend expects the JWT in the Authorization header.
- * This implementation uses explicit CORS settings and includes credentials.
+ * Retrieves the current user information using token‑based authentication.
+ * This function uses our centralized apiFetch helper which applies proper CORS, credentials,
+ * and error handling. It is intended to be called only on the client side.
  */
 export async function getCurrentUser(): Promise<UserResponse> {
   if (typeof window === "undefined") {
     throw new Error("getCurrentUser must be called on the client side.");
   }
+
   const token = getToken();
-  console.debug("[getCurrentUser] Retrieved token:", token);
   if (!token) {
-    console.error("[getCurrentUser] No token found in localStorage.");
-    throw new Error("User is not authenticated.");
-  }
-  if (!API_BASE_URL) {
-    console.error("[getCurrentUser] API_BASE_URL is not defined.");
-    throw new Error("API_BASE_URL is not configured.");
+    console.error("No token found when trying to get current user");
+    throw new Error("User is not authenticated. Please log in first.");
   }
 
   try {
+    console.log(
+      "Fetching current user with token:",
+      token ? "Token present" : "No token"
+    );
     const response = await fetch(`${API_BASE_URL}/auth/me`, {
       method: "GET",
       mode: "cors",
@@ -61,71 +38,99 @@ export async function getCurrentUser(): Promise<UserResponse> {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
       },
-      // Include credentials so that cookies (if any) are sent per backend CORS policy
-      credentials: "include",
+      credentials: "omit",
     });
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(
-        "[getCurrentUser] Failed with status",
+        "Get current user failed with status:",
         response.status,
-        "Response:",
+        "Error:",
         errorText
       );
       throw new Error(
         `getCurrentUser: HTTP error ${response.status} - ${errorText}`
       );
     }
-    const userData: UserResponse = await response.json();
-    console.debug("[getCurrentUser] Fetched user data:", userData);
+
+    const userData = await response.json();
+    console.log("Successfully retrieved user data");
     return userData;
   } catch (error) {
-    console.error("Error in getCurrentUser fetch:", error);
-    throw new Error(
-      "Unable to fetch current user data. Please ensure the backend is running, accessible, and that CORS is properly configured."
-    );
+    console.error("Error getting current user:", error);
+    // If we get a 401 or 403, clear the token as it's invalid
+    if (
+      error instanceof Error &&
+      (error.message.includes("401") || error.message.includes("403"))
+    ) {
+      console.log("Clearing invalid token");
+      clearToken();
+      throw new Error("Session expired. Please log in again.");
+    }
+    throw error;
   }
 }
 
 /**
  * Logs in the user using the provided username and password.
- * On success, the JWT token is stored in localStorage.
+ * On success, stores the JWT token for subsequent calls.
  */
 export async function login(
   username: string,
   password: string
 ): Promise<LoginResponse> {
-  console.debug("[login] Attempting login for username:", username);
   try {
+    console.log("Attempting login with username:", username);
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       mode: "cors",
       cache: "no-cache",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      // For token‑based auth, we omit credentials
       credentials: "omit",
       body: JSON.stringify({ username, password }),
     });
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(
-        "[login] Failed with status",
+        "Login failed with status:",
         response.status,
-        "Response:",
+        "Error:",
         errorText
       );
       throw new Error(`login: HTTP error ${response.status} - ${errorText}`);
     }
+
     const loginData: LoginResponse = await response.json();
-    console.debug("[login] Received login response:", loginData);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("authToken", loginData.token);
+    console.log(
+      "Login successful, received token:",
+      loginData.token ? "Token present" : "No token"
+    );
+
+    // Store token securely for subsequent API calls
+    if (loginData.token) {
+      setToken(loginData.token);
+      // Verify token is set by trying to get it
+      const storedToken = getToken();
+      if (!storedToken) {
+        console.error("Failed to store token in localStorage");
+        throw new Error("Failed to store authentication token");
+      }
+      console.log("Token successfully stored in localStorage");
+    } else {
+      console.error("No token received in login response");
+      throw new Error("No token received from login response");
     }
+
     return loginData;
   } catch (error) {
     console.error("Error in login:", error);
+    // Clear any partial token if login failed
+    clearToken();
     throw new Error(
       "Failed to log in. Please check your network connection and try again."
     );
@@ -138,7 +143,6 @@ export async function login(
 export async function register(
   registrationRequest: RegistrationRequest
 ): Promise<LoginResponse> {
-  console.debug("[register] Registering user with data:", registrationRequest);
   try {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: "POST",
@@ -152,19 +156,10 @@ export async function register(
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[register] Failed with status",
-        response.status,
-        "Response:",
-        errorText
-      );
       throw new Error(`register: HTTP error ${response.status} - ${errorText}`);
     }
     const data: LoginResponse = await response.json();
-    console.debug("[register] Registration successful:", data);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("authToken", data.token);
-    }
+    setToken(data.token);
     return data;
   } catch (error) {
     console.error("Error in register:", error);
@@ -180,13 +175,8 @@ export async function changePassword(
 ): Promise<string> {
   const token = getToken();
   if (!token) {
-    console.error("[changePassword] No token found.");
     throw new Error("User is not authenticated.");
   }
-  console.debug(
-    "[changePassword] Changing password with request:",
-    changePasswordRequest
-  );
   try {
     const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
       method: "POST",
@@ -201,18 +191,11 @@ export async function changePassword(
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[changePassword] Failed with status",
-        response.status,
-        "Response:",
-        errorText
-      );
       throw new Error(
         `changePassword: HTTP error ${response.status} - ${errorText}`
       );
     }
     const data = await response.json();
-    console.debug("[changePassword] Password changed successfully:", data);
     return data.message;
   } catch (error) {
     console.error("Error in changePassword:", error);
@@ -226,10 +209,6 @@ export async function changePassword(
 export async function resetPassword(
   passwordResetRequest: PasswordResetRequest
 ): Promise<string> {
-  console.debug(
-    "[resetPassword] Resetting password with request:",
-    passwordResetRequest
-  );
   try {
     const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
       method: "POST",
@@ -243,18 +222,11 @@ export async function resetPassword(
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[resetPassword] Failed with status",
-        response.status,
-        "Response:",
-        errorText
-      );
       throw new Error(
         `resetPassword: HTTP error ${response.status} - ${errorText}`
       );
     }
     const data = await response.json();
-    console.debug("[resetPassword] Password reset successful:", data);
     return data.message;
   } catch (error) {
     console.error("Error in resetPassword:", error);
@@ -267,7 +239,6 @@ export async function resetPassword(
  */
 export async function logout(): Promise<void> {
   const token = getToken();
-  console.debug("[logout] Logging out. Token:", token);
   try {
     const response = await fetch(`${API_BASE_URL}/auth/logout`, {
       method: "POST",
@@ -278,18 +249,9 @@ export async function logout(): Promise<void> {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[logout] Failed with status",
-        response.status,
-        "Response:",
-        errorText
-      );
       throw new Error(`logout: HTTP error ${response.status} - ${errorText}`);
     }
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("authToken");
-    }
-    console.debug("[logout] Logout successful.");
+    clearToken();
   } catch (error) {
     console.error("Error in logout:", error);
     throw new Error("Failed to logout. Please try again.");

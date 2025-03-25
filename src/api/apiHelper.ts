@@ -1,5 +1,6 @@
-// src/api/apiHelper.ts
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+/// <reference types="node" />
+
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 /**
  * Retrieve the JWT token from localStorage if available.
@@ -7,13 +8,13 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
  */
 export function getToken(): string | null {
   try {
-    return typeof window !== "undefined"
-      ? localStorage.getItem("authToken")
-      : null;
-  } catch (e) {
-    console.error("Error accessing localStorage:", e);
-    return null;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("authToken");
+    }
+  } catch (err) {
+    console.error("Error getting token from localStorage:", err);
   }
+  return null;
 }
 
 /**
@@ -24,8 +25,8 @@ export function setToken(token: string): void {
     if (typeof window !== "undefined") {
       localStorage.setItem("authToken", token);
     }
-  } catch (e) {
-    console.error("Error saving token to localStorage:", e);
+  } catch (err) {
+    console.error("Error setting token in localStorage:", err);
   }
 }
 
@@ -37,90 +38,128 @@ export function clearToken(): void {
     if (typeof window !== "undefined") {
       localStorage.removeItem("authToken");
     }
-  } catch (e) {
-    console.error("Error clearing token from localStorage:", e);
+  } catch (err) {
+    console.error("Error clearing token from localStorage:", err);
   }
 }
 
 /**
  * Handles the response from a fetch call.
- * If not OK, extracts and logs an error message then throws.
+ * If the response is not OK, it attempts to parse an error message from JSON (if available) then throws.
  */
 export async function handleResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type");
+  let responseBody: unknown;
+  if (contentType && contentType.includes("application/json")) {
+    responseBody = await response.json();
+  } else {
+    responseBody = await response.text();
+  }
   if (!response.ok) {
-    let errorMsg = `HTTP error ${response.status}`;
-    try {
-      const errorData = await response.json();
-      errorMsg = errorData.message || errorMsg;
-    } catch (err) {
-      console.error("Error parsing error response:", err);
-    }
-    console.error("API call failed:", errorMsg, {
+    const errorMsg =
+      (responseBody &&
+        typeof responseBody === "object" &&
+        (responseBody as { message?: string }).message) ||
+      responseBody ||
+      response.statusText;
+    console.error(`HTTP error ${response.status}:`, errorMsg, {
       status: response.status,
       url: response.url,
     });
-    throw new Error(errorMsg);
+    throw new Error(errorMsg as string);
   }
+  // For a 204 (No Content), return an empty object cast as T.
   if (response.status === 204) {
     return {} as T;
   }
-  return response.json() as Promise<T>;
+  return responseBody as T;
 }
 
 /**
  * A centralized fetch wrapper that automatically includes the Authorization header,
- * proper CORS and credentials options, and robust error handling.
+ * sets proper CORS mode and credentials, and handles network errors.
  */
 export async function fetchWithAuth(
   url: string,
-  options?: RequestInit
+  options: RequestInit = {}
 ): Promise<Response> {
-  options = options || {};
-  // Ensure cross-origin requests and that cookies (or HTTP‑only tokens) are sent
-  options.mode = "cors";
-  options.credentials = "include";
-
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-
+  // Use credentials: "include" to allow cookies (and other credentials) in cross-origin requests.
   const token = getToken();
+  const defaultOptions: RequestInit = {
+    mode: "cors",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+  };
+
+  // If a token exists, attach it to the Authorization header.
   if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+    (defaultOptions.headers as Record<string, string>)[
+      "Authorization"
+    ] = `Bearer ${token}`;
   }
-  options.headers = headers;
 
-  let response: Response;
+  // Merge provided options with defaults (merging headers too).
+  const mergedOptions: RequestInit = {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...(defaultOptions.headers as Record<string, string>),
+      ...(options.headers || {}),
+    },
+  };
+
+  // Ensure that the API_BASE_URL is configured.
+  if (!API_BASE_URL) {
+    throw new Error(
+      "API_BASE_URL is not configured. Please check your environment variables."
+    );
+  }
+
   try {
-    response = await fetch(url, options);
-  } catch (networkError) {
-    console.error("Network error during fetch:", networkError);
-    throw new Error("Network error. Please check your connection.");
-  }
+    const response = await fetch(url, mergedOptions);
 
-  // Handle unauthorized access by redirecting the user
-  if (response.status === 401) {
-    clearToken();
-    window.location.href = "/login?message=Session%20expired";
-    throw new Error("Session expired. Please login again.");
+    // Handle unauthorized access by clearing token and redirecting.
+    if (response.status === 401) {
+      clearToken();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login?message=Session%20expired";
+      }
+      throw new Error("Session expired. Please login again.");
+    }
+    if (response.status === 403) {
+      clearToken();
+      if (typeof window !== "undefined") {
+        window.location.href = "/403";
+      }
+      throw new Error("Not authorized.");
+    }
+    return response;
+  } catch (error: unknown) {
+    console.error("Network error during fetchWithAuth:", error, {
+      url,
+      options: mergedOptions,
+    });
+    throw new Error(
+      `Network error. Please check your connection and try again. URL: ${url}`
+    );
   }
-  if (response.status === 403) {
-    clearToken();
-    window.location.href = "/403";
-    throw new Error("Not authorized.");
-  }
-  return response;
 }
 
 /**
- * A helper function to perform fetch calls with automatic auth handling and error processing.
+ * Centralized API fetch helper that builds the full URL using API_BASE_URL,
+ * calls fetchWithAuth with the given options, and processes the response.
  */
 export async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error("API_BASE_URL is not configured.");
+  }
   const url = `${API_BASE_URL}${endpoint}`;
   const response = await fetchWithAuth(url, options);
   return handleResponse<T>(response);
 }
-
-export { API_BASE_URL };

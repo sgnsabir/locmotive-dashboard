@@ -49,8 +49,15 @@ export const loginThunk = createAsyncThunk<
   try {
     // Call login API and receive the token along with metadata
     const loginResponse: LoginResponse = await loginApi(username, password);
-    // Immediately store the token in localStorage so that it is available for subsequent API calls
-    localStorage.setItem("authToken", loginResponse.token);
+
+    // Verify token is set in localStorage
+    const storedToken = localStorage.getItem("authToken");
+    if (!storedToken) {
+      return thunkAPI.rejectWithValue("Failed to store authentication token");
+    }
+
+    // Add a small delay to ensure token is properly set
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Now call getCurrentUser so that the request includes the Authorization header with the token
     const userResponse: UserResponse = await getCurrentUser();
@@ -72,6 +79,9 @@ export const loginThunk = createAsyncThunk<
       expiresIn: loginResponse.expiresIn,
     };
   } catch (error) {
+    console.error("Login error:", error);
+    // Clear any partial token if login failed
+    localStorage.removeItem("authToken");
     if (error instanceof Error) {
       return thunkAPI.rejectWithValue(error.message || "Login failed");
     }
