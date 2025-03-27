@@ -1,32 +1,23 @@
-/// <reference types="node" />
-
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+// src/api/apiHelper.ts
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+const isProduction = process.env.NODE_ENV === "production";
 
 /**
- * Retrieve the JWT token from localStorage if available.
- * Safe for use in SSR by checking for window.
+ * Retrieve the JWT token from localStorage (development only).
  */
 export function getToken(): string | null {
-  try {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("authToken");
-    }
-  } catch (err) {
-    console.error("Error getting token from localStorage:", err);
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("authToken");
   }
   return null;
 }
 
 /**
- * Save a JWT token to localStorage.
+ * Save a new JWT token in localStorage (development only).
  */
 export function setToken(token: string): void {
-  try {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("authToken", token);
-    }
-  } catch (err) {
-    console.error("Error setting token in localStorage:", err);
+  if (typeof window !== "undefined") {
+    localStorage.setItem("authToken", token);
   }
 }
 
@@ -34,132 +25,137 @@ export function setToken(token: string): void {
  * Clear the JWT token from localStorage.
  */
 export function clearToken(): void {
-  try {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("authToken");
-    }
-  } catch (err) {
-    console.error("Error clearing token from localStorage:", err);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("authToken");
   }
 }
 
 /**
- * Handles the response from a fetch call.
- * If the response is not OK, it attempts to parse an error message from JSON (if available) then throws.
+ * Refresh token by calling the backend refresh endpoint.
+ * In production, the backend uses HTTP‑only cookies so credentials are included automatically.
+ * In development, the new token is expected in the response body and stored in localStorage.
  */
-export async function handleResponse<T>(response: Response): Promise<T> {
-  const contentType = response.headers.get("content-type");
-  let responseBody: unknown;
-  if (contentType && contentType.includes("application/json")) {
-    responseBody = await response.json();
-  } else {
-    responseBody = await response.text();
+export async function refreshToken(): Promise<void> {
+  const token = getToken();
+  if (!token && !isProduction) {
+    throw new Error("No token available for refresh");
   }
-  if (!response.ok) {
-    const errorMsg =
-      (responseBody &&
-        typeof responseBody === "object" &&
-        (responseBody as { message?: string }).message) ||
-      responseBody ||
-      response.statusText;
-    console.error(`HTTP error ${response.status}:`, errorMsg, {
-      status: response.status,
-      url: response.url,
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(!isProduction && token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(isProduction && { credentials: "include" }),
     });
-    throw new Error(errorMsg as string);
+    if (!response.ok) {
+      console.error("Token refresh failed", { status: response.status });
+      throw new Error("Failed to refresh token");
+    }
+    const data = await response.json();
+    if (data && data.token && !isProduction) {
+      setToken(data.token);
+      console.info("Token refreshed successfully");
+    } else if (isProduction) {
+      console.info("Token refreshed via HTTP‑only cookie");
+    } else {
+      throw new Error("No token returned from refresh endpoint");
+    }
+  } catch (error) {
+    console.error("Error during token refresh:", error);
+    throw error;
   }
-  // For a 204 (No Content), return an empty object cast as T.
-  if (response.status === 204) {
-    return {} as T;
-  }
-  return responseBody as T;
 }
 
 /**
- * A centralized fetch wrapper that automatically includes the Authorization header,
- * sets proper CORS mode and credentials, and handles network errors.
+ * A centralized fetch wrapper that automatically attaches the Authorization header (in development)
+ * and handles token refresh on 401 responses.
  */
 export async function fetchWithAuth(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  // Use credentials: "include" to allow cookies (and other credentials) in cross-origin requests.
-  const token = getToken();
-  const defaultOptions: RequestInit = {
-    mode: "cors",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-  };
+  // Create a new Headers instance based on existing headers
+  const headers = new Headers(options.headers || {});
+  headers.set("Content-Type", "application/json");
 
-  // If a token exists, attach it to the Authorization header.
-  if (token) {
-    (defaultOptions.headers as Record<string, string>)[
-      "Authorization"
-    ] = `Bearer ${token}`;
+  // Attach token if in development; production uses cookies so no need to attach manually
+  if (!isProduction) {
+    const token = getToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+  options.headers = headers;
+
+  if (isProduction) {
+    options.credentials = "include";
   }
 
-  // Merge provided options with defaults (merging headers too).
-  const mergedOptions: RequestInit = {
-    ...defaultOptions,
-    ...options,
-    headers: {
-      ...(defaultOptions.headers as Record<string, string>),
-      ...(options.headers || {}),
-    },
-  };
-
-  // Ensure that the API_BASE_URL is configured.
-  if (!API_BASE_URL) {
-    throw new Error(
-      "API_BASE_URL is not configured. Please check your environment variables."
-    );
-  }
-
+  let response: Response;
   try {
-    const response = await fetch(url, mergedOptions);
+    response = await fetch(url, options);
+  } catch (networkError) {
+    console.error("Network error during fetch:", networkError);
+    throw new Error("Network error. Please check your connection.");
+  }
 
-    // Handle unauthorized access by clearing token and redirecting.
-    if (response.status === 401) {
-      clearToken();
-      if (typeof window !== "undefined") {
-        window.location.href = "/login?message=Session%20expired";
+  // If unauthorized, attempt token refresh and retry once.
+  if (response.status === 401) {
+    try {
+      console.warn("Received 401, attempting token refresh...");
+      await refreshToken();
+      // After refresh, update headers with new token (in development)
+      if (!isProduction) {
+        const newToken = getToken();
+        if (!newToken) {
+          throw new Error("Token refresh did not yield a new token");
+        }
+        headers.set("Authorization", `Bearer ${newToken}`);
+        options.headers = headers;
       }
+      response = await fetch(url, options);
+      if (response.status === 401) {
+        clearToken();
+        window.location.href = "/login?message=Session%20expired";
+        throw new Error("Session expired. Please login again.");
+      }
+    } catch {
+      clearToken();
+      window.location.href = "/login?message=Session%20expired";
       throw new Error("Session expired. Please login again.");
     }
-    if (response.status === 403) {
-      clearToken();
-      if (typeof window !== "undefined") {
-        window.location.href = "/403";
-      }
-      throw new Error("Not authorized.");
-    }
-    return response;
-  } catch (error: unknown) {
-    console.error("Network error during fetchWithAuth:", error, {
-      url,
-      options: mergedOptions,
-    });
-    throw new Error(
-      `Network error. Please check your connection and try again. URL: ${url}`
-    );
+  } else if (response.status === 403) {
+    clearToken();
+    window.location.href = "/403";
+    throw new Error("Not Authorized");
   }
+  return response;
 }
 
 /**
- * Centralized API fetch helper that builds the full URL using API_BASE_URL,
- * calls fetchWithAuth with the given options, and processes the response.
+ * Helper function to process the fetch response.
  */
-export async function apiFetch<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  if (!API_BASE_URL) {
-    throw new Error("API_BASE_URL is not configured.");
+export async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let errorMsg = `HTTP error ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.message || errorMsg;
+    } catch (err) {
+      console.error("Error parsing error response:", err);
+    }
+    console.error("API call failed:", errorMsg, {
+      status: response.status,
+      url: response.url,
+    });
+    throw new Error(errorMsg);
   }
-  const url = `${API_BASE_URL}${endpoint}`;
-  const response = await fetchWithAuth(url, options);
-  return handleResponse<T>(response);
+  if (response.status === 204) {
+    return {} as T;
+  }
+  return response.json() as Promise<T>;
 }
+
+export { API_BASE_URL };

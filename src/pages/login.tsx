@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
 import { loginThunk } from "@/store/authSlice";
 import type { AppDispatch, RootState } from "@/store";
+//import { clearToken } from "@/api/apiHelper";
 
 const LoginPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -12,6 +13,7 @@ const LoginPage: React.FC = () => {
 
   // If the user is already logged in, redirect to home
   useEffect(() => {
+    //clearToken();
     if (user) {
       router.push("/");
     }
