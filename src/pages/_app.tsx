@@ -1,31 +1,51 @@
 // src/pages/_app.tsx
 import "../styles/globals.css";
 import type { AppProps } from "next/app";
-import { Provider, useSelector } from "react-redux";
-import { store, RootState } from "@/store";
+import { Provider, useSelector, useDispatch } from "react-redux";
+import { store, RootState, AppDispatch } from "@/store";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Layout from "@/components/layout/Layout";
+import { getCurrentUser } from "@/api/auth";
+import { loginThunk } from "@/store/authSlice";
 
 const publicRoutes = ["/login", "/_error", "/403"];
 
 /**
- * AuthWrapper ensures that for protected routes the user is already authenticated.
- * If not, it redirects to /login.
+ * AuthWrapper rehydrates the auth state using the JWT token stored in localStorage.
+ * If a token exists but no user is in the Redux state, it fetches the current user
+ * from the backend and dispatches a fulfilled action from loginThunk to update the store.
+ * If the token is invalid, it clears it and redirects to the login page.
  */
 const AuthWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((state: RootState) => state.auth.user);
+  const [rehydrated, setRehydrated] = useState(false);
 
   useEffect(() => {
-    // If on a protected route and no user is in state, redirect to login.
-    if (!publicRoutes.includes(router.pathname) && !user) {
-      router.push("/login");
+    async function rehydrateUser() {
+      const token = localStorage.getItem("authToken");
+      if (token && !user) {
+        try {
+          const currentUser = await getCurrentUser();
+          // Dispatch the fulfilled action of loginThunk manually to update the Redux state.
+          dispatch({
+            type: loginThunk.fulfilled.type,
+            payload: { user: currentUser, token, expiresIn: 3600 },
+          });
+        } catch {
+          localStorage.removeItem("authToken");
+          router.push("/login");
+          return;
+        }
+      }
+      setRehydrated(true);
     }
-  }, [user, router.pathname, router]);
+    rehydrateUser();
+  }, [user, dispatch, router]);
 
-  // While waiting for the user state on a protected route, show a loader.
-  if (!user && !publicRoutes.includes(router.pathname)) {
+  if (!rehydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         Loading...
@@ -33,7 +53,11 @@ const AuthWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  // Public routes render directly; protected routes are wrapped with Layout.
+  if (!user && !publicRoutes.includes(router.pathname)) {
+    router.push("/login");
+    return null;
+  }
+
   return publicRoutes.includes(router.pathname) ? (
     <>{children}</>
   ) : (
@@ -41,10 +65,14 @@ const AuthWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
+/**
+ * MyApp is the custom App component.
+ * We add a client‑only check so that rendering that depends on browser APIs (e.g. localStorage)
+ * only occurs after hydration to avoid SSR issues.
+ */
 function MyApp({ Component, pageProps }: AppProps) {
-  // IMPORTANT: We add a client-only check so that protected pages are rendered only after mount.
-  // This prevents SSR from calling getToken (which depends on localStorage) and avoids the 401 errors.
   const [isClient, setIsClient] = useState(false);
+
   useEffect(() => {
     setIsClient(true);
   }, []);

@@ -1,4 +1,5 @@
 // src/pages/profile.tsx
+
 import React, { FC, useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
@@ -13,7 +14,7 @@ const Profile: FC = () => {
   const router = useRouter();
   const user = useSelector((state: RootState) => state.auth.user);
 
-  // Initialize local state with empty string defaults to avoid undefined values.
+  // Initialize local state with default values
   const [profileData, setProfileData] = useState<ProfileData>({
     username: "",
     email: "",
@@ -22,10 +23,11 @@ const Profile: FC = () => {
     phone: "",
   });
 
-  // On mount, load current user data from the backend and update Redux state.
+  // Load current user data from the backend and update Redux state
   useEffect(() => {
     async function loadUser() {
       try {
+        console.info("[Profile] Loading current user...");
         const currentUser = await getCurrentUser();
         const extendedUser = currentUser as UserResponse;
         const tokenValue =
@@ -33,6 +35,7 @@ const Profile: FC = () => {
             ? ""
             : localStorage.getItem("authToken") || "";
         const reduxUser = {
+          id: extendedUser.id,
           username: extendedUser.username ?? "",
           email: extendedUser.email ?? "",
           role:
@@ -43,6 +46,7 @@ const Profile: FC = () => {
           twoFactorEnabled: extendedUser.twoFactorEnabled ?? false,
           phone: extendedUser.phone ?? "",
         };
+        console.info("[Profile] Current user loaded:", reduxUser);
         dispatch(
           loginSuccess({
             user: reduxUser,
@@ -51,13 +55,13 @@ const Profile: FC = () => {
           })
         );
       } catch (err) {
-        console.error("Error fetching current user:", err);
+        console.error("[Profile] Error fetching current user:", err);
       }
     }
     loadUser();
   }, [dispatch]);
 
-  // Sync Redux user state to local state for form editing
+  // Sync Redux user state to local state for form editing; redirect to login if no user found.
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -72,9 +76,10 @@ const Profile: FC = () => {
     }
   }, [user, router]);
 
-  // Handle profile update (simulate saving by dispatching to Redux; replace with API call if needed)
+  // Handle profile update by dispatching loginSuccess to update the auth state.
   const handleSave = async () => {
     if (user) {
+      console.info("[Profile] Saving updated profile data:", profileData);
       dispatch(
         loginSuccess({
           user: {

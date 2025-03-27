@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import { getPerformanceData } from "@/api/performance";
+import { API_BASE_URL } from "@/api/apiHelper";
 import { formatTime } from "@/utils/dateTime";
 import { PerformanceDTO } from "@/types/performance";
 
@@ -20,11 +21,20 @@ const PerformancePage: React.FC = () => {
   const fetchPerformance = useCallback(async () => {
     setLoading(true);
     setError(null);
+    console.debug(
+      "[PerformancePage] Fetching performance data with parameters:",
+      {
+        startDate,
+        endDate,
+        API_BASE_URL,
+      }
+    );
     try {
       const data = await getPerformanceData(startDate, endDate);
+      console.debug("[PerformancePage] Received performance data:", data);
       setPerformanceData(data);
     } catch (err: unknown) {
-      console.error("Error fetching performance data:", err);
+      console.error("[PerformancePage] Error fetching performance data:", err);
       if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -35,12 +45,11 @@ const PerformancePage: React.FC = () => {
     }
   }, [startDate, endDate]);
 
-  // Fetch data when the component mounts or when date range changes.
   useEffect(() => {
     fetchPerformance();
   }, [fetchPerformance]);
 
-  // Map performance data for chart rendering. Format timestamp to user-friendly time.
+  // Map performance data for chart rendering.
   const chartData = performanceData.map((item) => ({
     time: formatTime(new Date(item.timestamp).getTime()),
     speed: item.speed,
@@ -63,6 +72,7 @@ const PerformancePage: React.FC = () => {
             value={startDate.split("T")[0]}
             onChange={(e) => {
               const newStart = new Date(e.target.value).toISOString();
+              console.debug("[PerformancePage] New startDate set:", newStart);
               setStartDate(newStart);
             }}
             className="border rounded p-2"
@@ -78,6 +88,7 @@ const PerformancePage: React.FC = () => {
             value={endDate.split("T")[0]}
             onChange={(e) => {
               const newEnd = new Date(e.target.value).toISOString();
+              console.debug("[PerformancePage] New endDate set:", newEnd);
               setEndDate(newEnd);
             }}
             className="border rounded p-2"

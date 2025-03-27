@@ -1,6 +1,7 @@
-// types/user.d.ts
+// src/types/user.d.ts
+
 export interface User {
-  user_id: number;
+  id: number;
   username: string;
   email: string;
   role: string;
@@ -8,8 +9,9 @@ export interface User {
   twoFactorEnabled: boolean;
   phone: string;
 }
-// Extended type for the backend user response
-interface UserResponse {
+
+export interface UserResponse {
+  id: number; // added id field
   username: string;
   email: string;
   roles: string[];
@@ -19,8 +21,7 @@ interface UserResponse {
   phone?: string;
 }
 
-// Define a type for the local profile form state with all fields required.
-interface ProfileData {
+export interface ProfileData {
   username: string;
   email: string;
   avatar: string;
@@ -28,9 +29,59 @@ interface ProfileData {
   phone: string;
 }
 
-// Define types for creating/updating a user
 export interface UserData {
   username: string;
   email: string;
   role: string;
+}
+// src/types/auth.ts
+
+export interface LoginResponse {
+  token: string;
+  expiresIn: number;
+}
+
+export interface AuthState {
+  user: User | null;
+  token: string | null;
+  expiresIn: number | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export interface RegistrationRequest {
+  username: string;
+  password: string;
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+  // Optionally, confirmNewPassword is not sent to the backend if it equals newPassword.
+  confirmNewPassword?: string;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+  newPassword: string;
+}
+
+export interface UserUpdateRequest {
+  username: string;
+  email: string;
+}
+
+export interface AdminDashboardDTO {
+  averageSpeed?: number;
+  averageAoa?: number;
+  averageVibration?: number;
+  averageVerticalForceLeft?: number;
+  averageVerticalForceRight?: number;
+  averageLateralForceLeft?: number;
+  averageLateralForceRight?: number;
+  averageLateralVibrationLeft?: number;
+  averageLateralVibrationRight?: number;
+  alertHistory?: unknown[]; // Adjust type as needed
+  systemStatus?: string;
 }

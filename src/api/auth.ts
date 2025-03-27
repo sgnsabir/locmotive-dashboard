@@ -9,13 +9,12 @@ import {
   handleResponse,
 } from "@/api/apiHelper";
 import {
-  LoginResponse,
   UserResponse,
+  LoginResponse,
   RegistrationRequest,
   ChangePasswordRequest,
   PasswordResetRequest,
-} from "@/types/auth";
-
+} from "@/types/user";
 /**
  * Retrieves the current user from the backend.
  * Uses fetchWithAuth to ensure credentials are sent.
