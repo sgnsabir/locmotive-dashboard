@@ -12,4 +12,5 @@ export * from "./segmentAnalysis";
 export * from "./sensorAggregations";
 export * from "./steering";
 export * from "./track";
+export * from "./tracking";
 export * from "./userManagement";

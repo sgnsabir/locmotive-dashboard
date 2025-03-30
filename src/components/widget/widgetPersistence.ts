@@ -1,16 +1,17 @@
-import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+// src/components/widget/widgetPersistence.ts
+import { fetchWithAuth, getToken, handleResponse } from "@/api/apiHelper";
 import type { DashboardWidget } from "./WidgetCard";
 
 /**
  * Loads the user's dashboard widget configuration from the backend.
- * Expects the backend GET /users/settings endpoint to return a JSON object with a "dashboardWidgets" property.
+ * Expects the backend GET /api/users/settings endpoint to return a JSON object with a "dashboardWidgets" property.
  *
  * @returns A Promise that resolves to an array of DashboardWidget.
  */
 export async function loadWidgets(): Promise<DashboardWidget[]> {
   try {
     const token = getToken();
-    const response = await fetch(`${API_BASE_URL}/users/settings`, {
+    const response = await fetchWithAuth("/api/users/settings", {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -31,7 +32,7 @@ export async function loadWidgets(): Promise<DashboardWidget[]> {
 
 /**
  * Saves the user's dashboard widget configuration to the backend.
- * Sends a PUT request to the backend /users/settings endpoint with the updated configuration.
+ * Sends a PUT request to the backend /api/users/settings endpoint with the updated configuration.
  *
  * @param widgets - The updated array of DashboardWidget to persist.
  * @returns A Promise that resolves when the update is complete.
@@ -40,7 +41,7 @@ export async function saveWidgets(widgets: DashboardWidget[]): Promise<void> {
   try {
     const token = getToken();
     const payload = { dashboardWidgets: widgets };
-    const response = await fetch(`${API_BASE_URL}/users/settings`, {
+    const response = await fetchWithAuth("/api/users/settings", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

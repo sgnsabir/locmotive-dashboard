@@ -8,33 +8,41 @@ import { RootState, AppDispatch } from "@/store";
 import { logout as logoutAction } from "@/store/authSlice";
 import { useRouter } from "next/router";
 import useSWR from "swr";
-import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { getToken, handleResponse } from "@/api/apiHelper";
 
-// Define the navigation item type as returned from the backend
+// Define the navigation item type as returned from the backend.
 interface NavigationItem {
   id: string;
   label: string;
   url: string;
 }
 
-// SWR fetcher for navigation items
+// SWR fetcher function for navigation items using relative URL.
 const fetchNavigation = async (url: string): Promise<NavigationItem[]> => {
-  const response = await fetch(url, {
-    headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
-    credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
-  });
-  return handleResponse<NavigationItem[]>(response);
+  try {
+    const token = getToken();
+    const response = await fetch(url, {
+      headers: { Authorization: token ? `Bearer ${token}` : "" },
+      // Use "include" in production if cookies are needed.
+      credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
+    });
+    return handleResponse<NavigationItem[]>(response);
+  } catch (error) {
+    console.error("Failed to fetch navigation items:", error);
+    throw error;
+  }
 };
 
 const Header: React.FC = () => {
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Use the relative endpoint "/api/navigation" in the SWR hook.
   const { data: navItems, error: navError } = useSWR<NavigationItem[]>(
-    `${API_BASE_URL}/navigation`,
+    `/api/navigation`,
     fetchNavigation,
-    { refreshInterval: 60000 } // refresh every 60 seconds
+    { refreshInterval: 60000 }
   );
-  // Dynamically filter navigation items based on the search query
+
   const filteredNavItems = navItems
     ? navItems.filter((item) =>
         item.label.toLowerCase().includes(searchQuery.toLowerCase())
@@ -48,11 +56,12 @@ const Header: React.FC = () => {
 
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
+  // Updated to use the relative endpoint "/api/auth/logout".
   const handleLogout = async () => {
     try {
       const token = getToken();
       if (token) {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
+        await fetch(`/api/auth/logout`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           credentials:
@@ -73,13 +82,11 @@ const Header: React.FC = () => {
     setSearchQuery(e.target.value);
   };
 
-  // Clear the search query when a navigation item is selected
   const closeSearch = () => {
     setSearchQuery("");
   };
 
   const handleNotificationClick = () => {
-    // In production, replace with a proper notification UI rather than an alert.
     console.info("Notifications clicked.");
     setHasUnread(false);
   };

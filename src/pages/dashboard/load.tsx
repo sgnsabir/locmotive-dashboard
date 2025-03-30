@@ -1,5 +1,6 @@
-// src/pages/dashboard/load.tsx
-import React, { FC, useState, useEffect } from "react";
+// pages/load.tsx
+
+import React, { FC, useState, useEffect, ChangeEvent } from "react";
 import { useRouter } from "next/router";
 import { getRawData } from "@/api/rawData";
 import { RawDataResponse } from "@/types/rawData";
@@ -21,8 +22,8 @@ const LoadDistributionPage: FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch raw data from the backend using the relative endpoint /api/rawData
   useEffect(() => {
-    // Only fetch data if analysisId is available (router is ready)
     if (!analysisId) return;
     const fetchData = async () => {
       setLoading(true);
@@ -62,7 +63,9 @@ const LoadDistributionPage: FC = () => {
             </label>
             <select
               value={sensorType}
-              onChange={(e) => setSensorType(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                setSensorType(e.target.value)
+              }
               className="border rounded p-2"
             >
               <option value="">All</option>
@@ -78,7 +81,9 @@ const LoadDistributionPage: FC = () => {
             <input
               type="number"
               value={page}
-              onChange={(e) => setPage(Number(e.target.value))}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setPage(Number(e.target.value))
+              }
               className="mt-1 block border rounded p-2 w-20"
               min="0"
             />
@@ -90,7 +95,9 @@ const LoadDistributionPage: FC = () => {
             <input
               type="number"
               value={size}
-              onChange={(e) => setSize(Number(e.target.value))}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setSize(Number(e.target.value))
+              }
               className="mt-1 block border rounded p-2 w-20"
               min="1"
             />

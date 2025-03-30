@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
+import { subscribeRealtimeMetrics } from "@/api/realtime";
 
 const RealtimeDashboard: React.FC = () => {
   const router = useRouter();
   const { trainNo: trainNoParam } = router.query;
-  // If not provided, default to some integer for demo
+  // Use dynamic train number from query; default to 123 if not provided.
   const trainNo =
     typeof trainNoParam === "string" ? parseInt(trainNoParam, 10) : 123;
 
@@ -16,34 +17,25 @@ const RealtimeDashboard: React.FC = () => {
   useEffect(() => {
     if (!trainNo) return;
 
-    // Direct SSE approach using the plan snippet:
-    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/realtime/stream?trainNo=${trainNo}`;
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data: SensorMetricsDTO = JSON.parse(event.data);
+    // Subscribe using the updated SSE helper with a relative URL.
+    const eventSource = subscribeRealtimeMetrics<SensorMetricsDTO>(
+      trainNo,
+      (data) => {
         setRealtimeMetrics(data);
-      } catch (err) {
-        console.error("Error parsing SSE data:", err);
-        setError("Failed to parse realtime metrics data.");
+      },
+      (err) => {
+        console.error("Error in SSE subscription:", err);
+        setError("Error receiving realtime data.");
       }
-    };
+    );
 
-    eventSource.onerror = (evt) => {
-      console.error("SSE error:", evt);
-      setError("Error receiving realtime data.");
-      // Optionally close the connection if there is an error
-      // eventSource.close();
-    };
-
-    // Cleanup to avoid memory leaks:
+    // Cleanup on unmount to avoid memory leaks.
     return () => {
       eventSource.close();
     };
   }, [trainNo]);
 
-  // Compute derived values if left/right values exist
+  // Compute derived values if both left and right values exist.
   const computedAverageVibration =
     realtimeMetrics &&
     realtimeMetrics.averageVibrationLeft !== undefined &&

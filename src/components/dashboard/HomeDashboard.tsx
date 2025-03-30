@@ -1,5 +1,4 @@
 // src/components/dashboard/HomeDashboard.tsx
-
 import React, { FC } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/router";
@@ -8,10 +7,10 @@ import RealTimeStats from "@/components/dashboard/RealTimeStats";
 import HistoricalTrends from "@/components/dashboard/HistoricalTrends";
 import MaintenanceSchedule from "@/components/maintenance/MaintenanceSchedule";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
-import { getToken, API_BASE_URL, handleResponse } from "@/api/apiHelper";
+import { getToken, handleResponse } from "@/api/apiHelper";
 import { MaintenanceRecord } from "@/types/maintenance";
 
-// SWR fetcher for latest sensor metrics
+// SWR fetcher for latest sensor metrics using relative endpoint
 const metricsFetcher = (url: string) =>
   fetch(url, {
     headers: { Authorization: getToken() ? `Bearer ${getToken()}` : "" },
@@ -31,21 +30,21 @@ const HomeDashboard: FC = () => {
   const analysisIdQuery = router.query.analysisId;
   const analysisId = analysisIdQuery ? Number(analysisIdQuery) : 1;
 
-  // Fetch latest sensor metrics using dynamic analysisId.
+  // Fetch latest sensor metrics using the relative endpoint
   const { data: metrics, error: metricsError } = useSWR<SensorMetricsDTO>(
-    `${API_BASE_URL}/dashboard/latest/${analysisId}`,
+    `/api/dashboard/latest/${analysisId}`,
     metricsFetcher,
     { refreshInterval: 30000 }
   );
 
-  // Maintenance schedule is fetched from its endpoint (independent of analysisId).
+  // Fetch maintenance schedule (using relative endpoint)
   const { data: maintenanceSchedule, error: maintenanceError } = useSWR<
     MaintenanceRecord[]
-  >(`${API_BASE_URL}/maintenance/schedule`, maintenanceFetcher, {
+  >(`/api/maintenance/schedule`, maintenanceFetcher, {
     refreshInterval: 60000,
   });
 
-  // Map fetched metrics into KPI card data.
+  // Map fetched metrics into KPI card data
   const kpiData = [
     {
       title: "Average Speed",

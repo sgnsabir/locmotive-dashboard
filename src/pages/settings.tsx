@@ -1,6 +1,6 @@
 // src/pages/settings.tsx
 import React, { FC, useState, useEffect, ChangeEvent } from "react";
-import { API_BASE_URL, handleResponse } from "@/api/apiHelper";
+import { fetchWithAuth, handleResponse } from "@/api/apiHelper";
 import {
   UserSettings,
   GeneralSettings,
@@ -10,7 +10,6 @@ import {
 } from "@/types/settings";
 
 const Settings: FC = () => {
-  // Local state for user settings.
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -22,15 +21,14 @@ const Settings: FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/users/settings`, {
+        const response = await fetchWithAuth("/api/users/settings", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
           },
-          credentials: "include", // ensure cookies are sent in production
+          credentials: "include",
         });
         const data = await handleResponse<UserSettings>(response);
-        // Ensure each field has a valid default value.
         setSettings({
           general: {
             username: data.general.username || "",
@@ -57,7 +55,6 @@ const Settings: FC = () => {
           console.error("Error fetching settings:", err);
           setError(err.message || "Failed to fetch user settings");
         } else {
-          console.error("Error fetching settings:", err);
           setError("Failed to fetch user settings");
         }
       } finally {
@@ -68,7 +65,6 @@ const Settings: FC = () => {
     fetchSettings();
   }, []);
 
-  // Handler for input changes in general settings
   const handleGeneralChange = (field: keyof GeneralSettings, value: string) => {
     if (!settings) return;
     setSettings({
@@ -77,7 +73,6 @@ const Settings: FC = () => {
     });
   };
 
-  // Handler for dashboard settings changes
   const handleDashboardChange = (
     field: keyof DashboardSettings,
     value: boolean
@@ -89,7 +84,6 @@ const Settings: FC = () => {
     });
   };
 
-  // Handler for notification settings changes
   const handleNotificationChange = (
     field: keyof NotificationSettings,
     value: boolean
@@ -101,7 +95,6 @@ const Settings: FC = () => {
     });
   };
 
-  // Handler for security settings changes
   const handleSecurityChange = (
     field: keyof SecuritySettings,
     value: string | boolean
@@ -113,13 +106,12 @@ const Settings: FC = () => {
     });
   };
 
-  // Save settings to the backend via PUT request.
   const handleSave = async () => {
     if (!settings) return;
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/settings`, {
+      const response = await fetchWithAuth("/api/users/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -135,7 +127,6 @@ const Settings: FC = () => {
         console.error("Error updating settings:", err);
         setError(err.message || "Failed to update settings");
       } else {
-        console.error("Error updating settings:", err);
         setError("Failed to update settings");
       }
     } finally {
@@ -153,7 +144,7 @@ const Settings: FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold">User Settings & Configurations</h1>
+      <h1 className="text-3xl font-bold">User Settings &amp; Configurations</h1>
       {error && <div className="text-red-600">{error}</div>}
       <section className="bg-white p-6 rounded-md shadow">
         <h2 className="text-xl font-semibold mb-4">General Settings</h2>

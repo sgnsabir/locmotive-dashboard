@@ -1,4 +1,5 @@
 // src/pages/dashboard/track.tsx
+
 import React, { FC, useState, useMemo, ChangeEvent } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/router";
@@ -6,7 +7,6 @@ import BasicLineChart from "@/components/charts/BasicLineChart";
 import { downloadCSV, downloadJSON } from "@/utils/downloads";
 import { formatDate } from "@/utils/dateTime";
 import { getTrackConditionData } from "@/api/track";
-import { API_BASE_URL } from "@/api/apiHelper";
 import { TrackConditionDTO } from "@/types/trackCondition";
 
 const Track: FC = () => {
@@ -24,14 +24,14 @@ const Track: FC = () => {
   const [startDate, setStartDate] = useState<string>(defaultStartDate);
   const [endDate, setEndDate] = useState<string>(defaultEndDate);
 
-  // Fetch track condition data dynamically based on trainNo and date range.
+  // Fetch track condition data dynamically using the relative endpoint.
   const { data, error } = useSWR<TrackConditionDTO[]>(
-    `${API_BASE_URL}/track?trainNo=${trainNo}&startDate=${startDate}&endDate=${endDate}`,
+    `/api/track?trainNo=${trainNo}&startDate=${startDate}&endDate=${endDate}`,
     () => getTrackConditionData(trainNo, startDate, endDate),
     { refreshInterval: 60000 }
   );
 
-  // Compute chart data: average lateral and vertical forces.
+  // Compute chart data: calculate average lateral and vertical forces.
   const chartData = useMemo(() => {
     if (!data) return [];
     return data.map((item) => {
@@ -57,7 +57,7 @@ const Track: FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold">Track & Infrastructure Health</h1>
+      <h1 className="text-3xl font-bold">Track &amp; Infrastructure Health</h1>
 
       {/* Filter Section */}
       <section className="bg-white p-4 rounded-md shadow space-y-4">
@@ -100,13 +100,13 @@ const Track: FC = () => {
             />
           </div>
           <button
-            onClick={() => data && downloadCSV(data, "track_conditions.csv")}
+            onClick={() => downloadCSV(data || [], "track_conditions.csv")}
             className="bg-blue-600 text-white px-4 py-2 rounded"
           >
             Download CSV
           </button>
           <button
-            onClick={() => data && downloadJSON(data, "track_conditions.json")}
+            onClick={() => downloadJSON(data || [], "track_conditions.json")}
             className="bg-green-600 text-white px-4 py-2 rounded"
           >
             Download JSON

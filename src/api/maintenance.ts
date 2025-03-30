@@ -1,49 +1,51 @@
 // src/api/maintenance.ts
+
+import { fetchWithAuth, handleResponse } from "@/api/apiHelper";
 import {
   MaintenanceRecord,
   PredictiveMaintenanceResponse,
 } from "@/types/maintenance";
-import { getToken, handleResponse, API_BASE_URL } from "./apiHelper";
 
 /**
  * Retrieves the maintenance schedule from the backend.
- * Assumes that the backend exposes GET /maintenance/schedule.
- *
- * @returns a Promise resolving to an array of MaintenanceRecord.
+ * Endpoint: GET /api/maintenance/schedule
  */
 export async function getMaintenanceSchedule(): Promise<MaintenanceRecord[]> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/maintenance/schedule`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  return handleResponse<MaintenanceRecord[]>(response);
+  try {
+    const response = await fetchWithAuth("/api/maintenance/schedule", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      // Note: credentials and retry logic (e.g., for HTTP 429) are handled in fetchWithAuth.
+    });
+    return await handleResponse<MaintenanceRecord[]>(response);
+  } catch (error: unknown) {
+    console.error("Error fetching maintenance schedule:", error);
+    throw error;
+  }
 }
 
 /**
  * Retrieves predictive maintenance insights for a given analysisId and alertEmail.
+ * Endpoint: GET /api/predictive/{analysisId}?alertEmail={email}
  *
- * @param analysisId - The identifier for the analysis.
+ * @param analysisId - The analysis identifier.
  * @param alertEmail - The email to use for alerts (default: alerts@example.com).
- * @returns a Promise resolving to a PredictiveMaintenanceResponse.
  */
 export async function getPredictiveMaintenance(
   analysisId: number,
-  alertEmail: string = "alerts@example.com"
+  alertEmail: string = "sgnsabir@gmail.com"
 ): Promise<PredictiveMaintenanceResponse> {
-  const token = getToken();
-  const url = `${API_BASE_URL}/predictive/${analysisId}?alertEmail=${encodeURIComponent(
-    alertEmail
-  )}`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  return handleResponse<PredictiveMaintenanceResponse>(response);
+  try {
+    const url = `/api/predictive/${analysisId}?alertEmail=${encodeURIComponent(
+      alertEmail
+    )}`;
+    const response = await fetchWithAuth(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    return await handleResponse<PredictiveMaintenanceResponse>(response);
+  } catch (error: unknown) {
+    console.error("Error fetching predictive maintenance data:", error);
+    throw error;
+  }
 }

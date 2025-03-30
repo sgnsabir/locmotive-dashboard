@@ -1,58 +1,94 @@
+// src/api/userManagement.ts
 import {
-  AdminDashboardDTO,
   UserResponse,
   UserUpdateRequest,
-} from "@/types/auth";
-import { getToken, handleResponse, API_BASE_URL } from "./apiHelper";
+  AdminDashboardDTO,
+} from "@/types/user";
+import { fetchWithAuth, handleResponse } from "./apiHelper";
 
+/**
+ * Retrieves a user by their ID.
+ */
 export async function getUserById(id: number): Promise<UserResponse> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/users/${id}`, {
-    method: "GET",
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-  });
-  return handleResponse<UserResponse>(response);
+  try {
+    const response = await fetchWithAuth(`/api/users/${id}`, {
+      method: "GET",
+      credentials: "include",
+    });
+    return await handleResponse<UserResponse>(response);
+  } catch (error: unknown) {
+    console.error("Error fetching user by id:", error);
+    throw error;
+  }
 }
 
+/**
+ * Retrieves all users.
+ */
 export async function getAllUsers(): Promise<UserResponse[]> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/users`, {
-    method: "GET",
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-  });
-  return handleResponse<UserResponse[]>(response);
+  try {
+    const response = await fetchWithAuth("/api/users", {
+      method: "GET",
+      credentials: "include",
+    });
+    return await handleResponse<UserResponse[]>(response);
+  } catch (error: unknown) {
+    console.error("Error fetching all users:", error);
+    throw error;
+  }
 }
 
+/**
+ * Updates a user with the given ID.
+ */
 export async function updateUser(
   id: number,
   updateRequest: UserUpdateRequest
 ): Promise<UserResponse> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/users/${id}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-    body: JSON.stringify(updateRequest),
-  });
-  return handleResponse<UserResponse>(response);
+  try {
+    const response = await fetchWithAuth(`/api/users/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(updateRequest),
+    });
+    return await handleResponse<UserResponse>(response);
+  } catch (error: unknown) {
+    console.error("Error updating user:", error);
+    throw error;
+  }
 }
 
+/**
+ * Deletes the user with the given ID.
+ */
 export async function deleteUser(id: number): Promise<void> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/users/${id}`, {
-    method: "DELETE",
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-  });
-  await handleResponse(response);
+  try {
+    const response = await fetchWithAuth(`/api/users/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    await handleResponse(response);
+  } catch (error: unknown) {
+    console.error("Error deleting user:", error);
+    throw error;
+  }
 }
 
+/**
+ * Retrieves the admin dashboard data.
+ */
 export async function getAdminDashboard(): Promise<AdminDashboardDTO> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}/admin/dashboard`, {
-    method: "GET",
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-  });
-  return handleResponse<AdminDashboardDTO>(response);
+  try {
+    const response = await fetchWithAuth(`/api/admin/dashboard`, {
+      method: "GET",
+      credentials: "include",
+    });
+    return await handleResponse<AdminDashboardDTO>(response);
+  } catch (error: unknown) {
+    console.error("Error fetching admin dashboard:", error);
+    throw error;
+  }
 }

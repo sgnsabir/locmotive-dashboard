@@ -1,5 +1,4 @@
 // src/pages/dashboard/alerts/[id].tsx
-
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { getAlertById } from "@/api/alerts";
@@ -20,6 +19,7 @@ const AlertDetail: React.FC = () => {
       const data: AlertResponse = await getAlertById(alertId);
       setAlert(data);
     } catch (err) {
+      console.error("Error fetching alert:", err);
       if (err instanceof Error) {
         setError(err.message);
       } else {

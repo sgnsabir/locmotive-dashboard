@@ -1,10 +1,15 @@
-// src/api/apiHelper.ts
+/**
+ * src/api/apiHelper.ts
+ *
+ * This helper file centralizes API calls.
+ * All endpoints are now relative (e.g. "/api/auth/login") so that Next.js rewrites
+ * (configured in next.config.ts) proxy the requests to the backend (e.g. http://localhost:8080/api/v1/…).
+ */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-const isProduction = process.env.NODE_ENV === "production";
+export const API_BASE_URL = "/api"; // Use relative URLs; Next.js rewrites will proxy these calls
 
 /**
- * Retrieve the JWT token from localStorage (development only).
+ * Retrieve the JWT token from localStorage.
  */
 export function getToken(): string | null {
   if (typeof window !== "undefined") {
@@ -14,12 +19,11 @@ export function getToken(): string | null {
 }
 
 /**
- * Save a new JWT token in localStorage (development only).
+ * Save a new JWT token in localStorage.
  */
 export function setToken(token: string): void {
   if (typeof window !== "undefined") {
     localStorage.setItem("authToken", token);
-    console.debug("[setToken] New token saved to localStorage.");
   }
 }
 
@@ -29,186 +33,166 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   if (typeof window !== "undefined") {
     localStorage.removeItem("authToken");
-    console.debug("[clearToken] Token removed from localStorage.");
   }
 }
 
 /**
- * Refresh token by calling the backend refresh endpoint.
- * In production, the backend uses HTTP‑only cookies so credentials are included automatically.
- * In development, the new token is expected in the response body and stored in localStorage.
+ * Helper function to delay execution.
+ */
+async function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Refresh the JWT token by calling the refresh endpoint.
+ * Uses the relative URL so that the Next.js rewrite forwards the request to the backend.
  */
 export async function refreshToken(): Promise<void> {
   const token = getToken();
-  if (!token && !isProduction) {
-    console.error("[refreshToken] No token available for refresh.");
+  if (!token) {
     throw new Error("No token available for refresh");
   }
   try {
-    console.debug(
-      "[refreshToken] Attempting to refresh token using URL:",
-      `${API_BASE_URL}/auth/refresh`
-    );
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
-      mode: "cors",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(!isProduction && token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
-      ...(isProduction && { credentials: "include" }),
+      credentials: "include", // Include cookies if needed
     });
-    console.debug(
-      "[refreshToken] Received response with status:",
-      response.status
-    );
     if (!response.ok) {
-      console.error("[refreshToken] Token refresh failed", {
-        status: response.status,
-      });
+      console.log("Failed to refresh token. Response:", response);
+      clearToken();
       throw new Error("Failed to refresh token");
     }
     const data = await response.json();
-    console.debug("[refreshToken] Response data:", data);
-    if (data && data.token && !isProduction) {
+    if (data.token) {
       setToken(data.token);
-      console.info(
-        "[refreshToken] Token refreshed successfully (development)."
-      );
-    } else if (isProduction) {
-      console.info(
-        "[refreshToken] Token refreshed via HTTP‑only cookie (production)."
-      );
     } else {
-      console.error("[refreshToken] No token returned from refresh endpoint.");
-      throw new Error("No token returned from refresh endpoint");
+      console.log("No token returned during refresh", data);
+      clearToken();
+      throw new Error("No token returned during refresh");
     }
   } catch (error) {
-    console.error("[refreshToken] Error during token refresh:", error);
+    console.log(error);
     throw error;
   }
 }
 
 /**
- * A centralized fetch wrapper that automatically attaches the Authorization header (in development)
- * and handles token refresh on 401 responses.
+ * A centralized fetch wrapper that:
+ * - Attaches the authorization header if a token exists.
+ * - Uses relative URLs.
+ * - Uses "credentials": "include" to send cookies.
+ * - Does not include an explicit "mode": "cors" option.
+ * - Implements robust error handling including token refresh on 401 responses and retry on 429 (Too Many Requests).
  */
 export async function fetchWithAuth(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  console.debug("[fetchWithAuth] Initiating fetch for URL:", url);
-
-  // Create a new Headers instance based on existing headers
+  const token = getToken();
   const headers = new Headers(options.headers || {});
-  headers.set("Content-Type", "application/json");
-  headers.set("Accept", "application/json"); // Ensure JSON response
 
-  // Attach token if in development; production uses cookies so no need to attach manually
-  if (!isProduction) {
-    const token = getToken();
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-      console.debug("[fetchWithAuth] Attached token to headers.");
-    } else {
-      console.warn("[fetchWithAuth] No token found in localStorage.");
-    }
+  // Set default headers if not already set.
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
-  options.headers = headers;
-  options.mode = "cors"; // Explicitly set CORS mode
+  headers.set("Accept", "application/json");
 
-  if (isProduction) {
-    options.credentials = "include";
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
+
+  const opts: RequestInit = {
+    ...options,
+    headers,
+    credentials: "include", // Ensure cookies are sent when required
+  };
 
   let response: Response;
   try {
-    console.debug("[fetchWithAuth] Fetch options:", options);
-    response = await fetch(url, options);
-    console.debug(
-      "[fetchWithAuth] Received response with status:",
-      response.status
-    );
-  } catch (networkError) {
-    console.error("[fetchWithAuth] Network error during fetch:", networkError);
+    response = await fetch(url, opts);
+  } catch (error) {
+    console.log(error);
     throw new Error("Network error. Please check your connection.");
+  }
+
+  // Handle HTTP 429 Too Many Requests with retry logic.
+  if (response.status === 429) {
+    const maxRetries = 3;
+    let retryCount = 0;
+    while (retryCount < maxRetries && response.status === 429) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfter = retryAfterHeader
+        ? parseInt(retryAfterHeader, 10) * 1000
+        : 1000;
+      console.log(
+        `Received HTTP 429. Retrying after ${retryAfter} ms... (Attempt ${
+          retryCount + 1
+        }/${maxRetries})`
+      );
+      await delay(retryAfter);
+      retryCount++;
+      try {
+        response = await fetch(url, opts);
+      } catch (error) {
+        console.log(error);
+        throw new Error(
+          "Network error during retry. Please check your connection."
+        );
+      }
+    }
+    if (response.status === 429) {
+      console.log(`HTTP 429 Too Many Requests after ${maxRetries} retries.`);
+      throw new Error("HTTP 429 Too Many Requests");
+    }
   }
 
   // If unauthorized, attempt token refresh and retry once.
   if (response.status === 401) {
-    console.warn(
-      "[fetchWithAuth] Received 401 Unauthorized. Attempting token refresh..."
-    );
     try {
       await refreshToken();
-      // After refresh, update headers with new token (in development)
-      if (!isProduction) {
-        const newToken = getToken();
-        if (!newToken) {
-          console.error(
-            "[fetchWithAuth] Token refresh did not yield a new token."
-          );
-          throw new Error("Token refresh did not yield a new token");
-        }
-        headers.set("Authorization", `Bearer ${newToken}`);
-        options.headers = headers;
-        console.debug(
-          "[fetchWithAuth] Updated headers with new token after refresh."
-        );
+      const newToken = getToken();
+      if (!newToken) {
+        clearToken();
+        throw new Error("Session expired. Please log in again.");
       }
-      response = await fetch(url, options);
-      console.debug(
-        "[fetchWithAuth] Retried fetch received status:",
-        response.status
-      );
+      headers.set("Authorization", `Bearer ${newToken}`);
+      response = await fetch(url, { ...opts, headers });
       if (response.status === 401) {
         clearToken();
-        window.location.href = "/login?message=Session%20expired";
-        throw new Error("Session expired. Please login again.");
+        throw new Error("Session expired. Please log in again.");
       }
     } catch (error) {
-      console.error("[fetchWithAuth] Token refresh or retry failed:", error);
+      console.log(error);
       clearToken();
-      window.location.href = "/login?message=Session%20expired";
-      throw new Error("Session expired. Please login again.");
+      throw new Error("Session expired. Please log in again.");
     }
-  } else if (response.status === 403) {
-    console.error("[fetchWithAuth] Received 403 Forbidden.");
-    clearToken();
-    window.location.href = "/403";
-    throw new Error("Not Authorized");
   }
+
   return response;
 }
 
 /**
- * Helper function to process the fetch response.
+ * Process the response from a fetch call.
+ * Throws an error if the response is not OK.
  */
 export async function handleResponse<T>(response: Response): Promise<T> {
-  console.debug("[handleResponse] Processing response from URL:", response.url);
   if (!response.ok) {
     let errorMsg = `HTTP error ${response.status}`;
     try {
       const errorData = await response.json();
       errorMsg = errorData.message || errorMsg;
-      console.error("[handleResponse] Error response data:", errorData);
     } catch (err) {
-      console.error("[handleResponse] Error parsing error response:", err);
+      console.log(err);
     }
-    console.error("[handleResponse] API call failed:", errorMsg, {
-      status: response.status,
-      url: response.url,
-    });
+    console.log("Error in handleResponse:", errorMsg);
     throw new Error(errorMsg);
   }
   if (response.status === 204) {
-    console.debug("[handleResponse] No content (204) received.");
     return {} as T;
   }
-  const jsonData = await response.json();
-  console.debug("[handleResponse] Successful response data:", jsonData);
-  return jsonData as Promise<T>;
+  return response.json();
 }
-
-export { API_BASE_URL };

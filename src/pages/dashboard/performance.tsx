@@ -1,8 +1,6 @@
-// pages/dashboard/performance.tsx
 import React, { useEffect, useState, useCallback } from "react";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import { getPerformanceData } from "@/api/performance";
-import { API_BASE_URL } from "@/api/apiHelper";
 import { formatTime } from "@/utils/dateTime";
 import { PerformanceDTO } from "@/types/performance";
 
@@ -11,7 +9,7 @@ const PerformancePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Default date range: Last 7 days to now in ISO format
+  // Default date range: Last 7 days to now (in ISO format)
   const [startDate, setStartDate] = useState<string>(
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   );
@@ -21,14 +19,10 @@ const PerformancePage: React.FC = () => {
   const fetchPerformance = useCallback(async () => {
     setLoading(true);
     setError(null);
-    console.debug(
-      "[PerformancePage] Fetching performance data with parameters:",
-      {
-        startDate,
-        endDate,
-        API_BASE_URL,
-      }
-    );
+    console.debug("[PerformancePage] Fetching performance data:", {
+      startDate,
+      endDate,
+    });
     try {
       const data = await getPerformanceData(startDate, endDate);
       console.debug("[PerformancePage] Received performance data:", data);
@@ -60,7 +54,7 @@ const PerformancePage: React.FC = () => {
     <div className="container mx-auto px-4 py-6">
       <h1 className="text-3xl font-bold mb-4">Train Performance</h1>
 
-      {/* Date range filters and refresh control */}
+      {/* Date Range Filters and Refresh Control */}
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <div>
           <label htmlFor="startDate" className="mr-2 text-sm">

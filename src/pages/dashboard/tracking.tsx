@@ -1,139 +1,147 @@
 // src/pages/dashboard/tracking.tsx
+
 import React, { FC } from "react";
 import dynamic from "next/dynamic";
 import useSWR from "swr";
-import { RoutePoint } from "@/components/maps/TrainMap";
 import { useRouter } from "next/router";
-import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { fetchWithAuth, handleResponse } from "@/api/apiHelper";
+import { RoutePoint } from "@/components/maps/TrainMap";
 
-// Dynamically import TrainMap (client-side only)
+// Dynamically import the TrainMap component (client-side only)
 const TrainMap = dynamic(() => import("@/components/maps/TrainMap"), {
   ssr: false,
 });
 
-// Fallback default train number if none is provided via URL query
-const DEFAULT_TRAIN_NO = 123;
-
-// Fetcher for route data from backend
-const fetcher = async (url: string): Promise<RoutePoint[]> => {
-  const token = getToken();
-  const response = await fetch(url, {
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-    credentials: "include",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch route data: ${response.statusText}`);
-  }
-  return response.json();
-};
-
-// Define a type for realtime metrics (safety insights) from the backend
-interface RealtimeMetrics {
+// Define the type for realtime tracking metrics
+export interface RealtimeMetrics {
   riskScore: number;
   alertMessage: string;
   sensorSummary?: string;
   // Additional fields can be added as needed
 }
 
-// Fetcher for realtime metrics data
-const realtimeFetcher = async (url: string): Promise<RealtimeMetrics> => {
-  const token = getToken();
-  const response = await fetch(url, {
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-    credentials: "include",
-  });
+// Fetcher for live GPS route using relative URL and our centralized fetchWithAuth
+const fetchTrackingRoute = async (trainNo: number): Promise<RoutePoint[]> => {
+  const response = await fetchWithAuth(
+    `/api/tracking/route?trainNo=${trainNo}`,
+    {
+      method: "GET",
+      credentials: "include",
+    }
+  );
+  return handleResponse<RoutePoint[]>(response);
+};
+
+// Fetcher for safety metrics using relative URL
+const fetchTrackingMetrics = async (
+  trainNo: number
+): Promise<RealtimeMetrics> => {
+  const response = await fetchWithAuth(
+    `/api/tracking/metrics?trainNo=${trainNo}`,
+    {
+      method: "GET",
+      credentials: "include",
+    }
+  );
   return handleResponse<RealtimeMetrics>(response);
 };
 
 const Tracking: FC = () => {
   const router = useRouter();
   const { trainNo: queryTrainNo } = router.query;
-  // Use dynamic train number from URL; fallback to default if missing
+  // Parse train number from query; default to 123 if not provided or invalid
   const trainNo =
-    typeof queryTrainNo === "string"
+    typeof queryTrainNo === "string" && !isNaN(parseInt(queryTrainNo, 10))
       ? parseInt(queryTrainNo, 10)
-      : DEFAULT_TRAIN_NO;
+      : 123;
 
-  // Fetch live route data using the dynamic train number
-  const { data: routeData, error: routeError } = useSWR<RoutePoint[]>(
-    `${API_BASE_URL}/tracking/route?trainNo=${trainNo}`,
-    fetcher,
-    { refreshInterval: 10000 } // Refresh every 10 seconds
+  // Use SWR to fetch live GPS route data
+  const {
+    data: routeData,
+    error: routeError,
+    isValidating: routeLoading,
+  } = useSWR<RoutePoint[]>(
+    `/api/tracking/route?trainNo=${trainNo}`,
+    () => fetchTrackingRoute(trainNo),
+    {
+      refreshInterval: 10000, // refresh every 10 seconds
+      dedupingInterval: 5000,
+    }
   );
 
-  // Fetch realtime sensor metrics (for safety alerts and insights) using dynamic train number
-  const { data: realtimeMetrics, error: realtimeError } =
-    useSWR<RealtimeMetrics>(
-      `${API_BASE_URL}/tracking/metrics?trainNo=${trainNo}`,
-      realtimeFetcher,
-      { refreshInterval: 10000 } // Refresh every 10 seconds
-    );
+  // Use SWR to fetch safety metrics
+  const {
+    data: metricsData,
+    error: metricsError,
+    isValidating: metricsLoading,
+  } = useSWR<RealtimeMetrics>(
+    `/api/tracking/metrics?trainNo=${trainNo}`,
+    () => fetchTrackingMetrics(trainNo),
+    {
+      refreshInterval: 10000, // refresh every 10 seconds
+      dedupingInterval: 5000,
+    }
+  );
 
-  // Determine map center: if route data exists, use the first coordinate; otherwise, fallback
+  // Determine map center: if route data exists, use the first point; otherwise, fallback to {lat: 0, lng: 0}
   const mapCenter: RoutePoint =
     routeData && routeData.length > 0 ? routeData[0] : { lat: 0, lng: 0 };
 
-  // Define a risk threshold for alerting (e.g. riskScore >= 0.7 triggers an alert)
-  const ALERT_THRESHOLD = 0.7;
-  let safetyAlertContent: React.ReactElement = (
-    <p className="text-gray-700">No safety alerts at this time.</p>
-  );
-
-  if (realtimeError) {
-    safetyAlertContent = (
-      <p className="text-red-600">
-        Error loading safety alerts:{" "}
-        {realtimeError instanceof Error
-          ? realtimeError.message
-          : "Unknown error"}
-      </p>
-    );
-  } else if (realtimeMetrics) {
-    if (realtimeMetrics.riskScore >= ALERT_THRESHOLD) {
-      safetyAlertContent = (
-        <div>
-          <p className="text-red-600 font-semibold">
-            Alert: High risk detected!
-          </p>
-          <p className="text-gray-700">{realtimeMetrics.alertMessage}</p>
-          {realtimeMetrics.sensorSummary && (
-            <p className="text-gray-600 text-sm">
-              Sensor Summary: {realtimeMetrics.sensorSummary}
-            </p>
-          )}
-        </div>
-      );
-    } else {
-      safetyAlertContent = (
-        <p className="text-green-600">
-          Safety parameters within normal range. (Risk Score:{" "}
-          {realtimeMetrics.riskScore.toFixed(2)})
-        </p>
-      );
-    }
-  }
-
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
-      <h1 className="text-3xl font-bold mb-4">Train Tracking &amp; Safety</h1>
+      <h1 className="text-3xl font-bold">Train Tracking &amp; Safety</h1>
 
+      {/* Live GPS Tracking Section */}
       <section className="bg-white p-4 rounded-md shadow">
         <h2 className="text-xl font-semibold mb-2">Live GPS Tracking</h2>
-        {routeError ? (
+        {routeLoading && <p>Loading route data...</p>}
+        {routeError && (
           <p className="text-red-600">
             Error loading route data:{" "}
             {routeError instanceof Error ? routeError.message : "Unknown error"}
           </p>
-        ) : !routeData ? (
-          <p>Loading route data...</p>
-        ) : (
+        )}
+        {routeData && routeData.length > 0 ? (
           <TrainMap route={routeData} center={mapCenter} zoom={9} />
+        ) : (
+          !routeLoading && <p>No route data available.</p>
         )}
       </section>
 
+      {/* Safety Metrics Section */}
       <section className="bg-white p-4 rounded-md shadow">
-        <h2 className="text-xl font-semibold mb-2">Safety Alerts & Insights</h2>
-        {safetyAlertContent}
+        <h2 className="text-xl font-semibold mb-2">Safety Metrics</h2>
+        {metricsLoading && <p>Loading safety metrics...</p>}
+        {metricsError && (
+          <p className="text-red-600">
+            Error loading safety metrics:{" "}
+            {metricsError instanceof Error
+              ? metricsError.message
+              : "Unknown error"}
+          </p>
+        )}
+        {metricsData && (
+          <div>
+            {metricsData.riskScore >= 0.7 ? (
+              <p className="text-red-600 font-bold">High Risk Detected!</p>
+            ) : (
+              <p className="text-green-600">
+                Safety parameters within normal range.
+              </p>
+            )}
+            <p>
+              <strong>Risk Score:</strong> {metricsData.riskScore.toFixed(2)}
+            </p>
+            <p>
+              <strong>Alert Message:</strong> {metricsData.alertMessage}
+            </p>
+            {metricsData.sensorSummary && (
+              <p>
+                <strong>Sensor Summary:</strong> {metricsData.sensorSummary}
+              </p>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

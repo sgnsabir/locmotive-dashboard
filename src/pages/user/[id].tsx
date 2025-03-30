@@ -1,17 +1,16 @@
-// pages/user/[id].tsx
+// src/pages/user/[id].tsx
 import React from "react";
 import { useRouter } from "next/router";
 import useSWR from "swr";
 import { getUserById } from "@/api/userManagement";
-import { UserResponse } from "@/types/auth";
+import { UserResponse } from "@/types/user";
 
 const UserDetail: React.FC = () => {
   const router = useRouter();
   const { id } = router.query;
 
-  // Use SWR to fetch user details once the id is available
   const { data: user, error } = useSWR<UserResponse>(
-    id ? `/users/${id}` : null,
+    id ? `/api/users/${id}` : null,
     () => getUserById(Number(id))
   );
 

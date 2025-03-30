@@ -32,7 +32,7 @@ const UserManagement: FC = () => {
 
   return (
     <div className="container mx-auto p-4 space-y-4">
-      <h1 className="text-3xl font-bold">User Management & Reports</h1>
+      <h1 className="text-3xl font-bold">User Management &amp; Reports</h1>
       <Link
         href="/user/create"
         className="bg-green-600 text-white px-4 py-2 rounded"
@@ -52,20 +52,20 @@ const UserManagement: FC = () => {
           </thead>
           <tbody>
             {users.map((u: User) => (
-              <tr key={u.user_id}>
-                <td className="px-4 py-2 border">{u.user_id}</td>
+              <tr key={u.id} className="text-center">
+                <td className="px-4 py-2 border">{u.id}</td>
                 <td className="px-4 py-2 border">{u.username}</td>
                 <td className="px-4 py-2 border">{u.email}</td>
                 <td className="px-4 py-2 border">{u.role}</td>
                 <td className="px-4 py-2 border space-x-2">
                   <Link
-                    href={`/user/${u.user_id}`}
+                    href={`/user/${u.id}`}
                     className="bg-blue-600 text-white px-2 py-1 rounded"
                   >
                     View
                   </Link>
                   <button
-                    onClick={() => handleDelete(u.user_id)}
+                    onClick={() => handleDelete(u.id)}
                     className="bg-red-600 text-white px-2 py-1 rounded"
                   >
                     Delete

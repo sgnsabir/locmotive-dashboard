@@ -1,7 +1,14 @@
-// src/api/auth.ts
+/**
+ * src/api/auth.ts
+ *
+ * Updated API calls for user authentication.
+ * All endpoints use relative URLs (e.g. "/api/auth/login") so that Next.js rewrite
+ * rules proxy requests to the backend.
+ * Explicit "mode": "cors" has been removed.
+ * Each call uses fetchWithAuth to handle authorization, credentials, and token management.
+ */
 
 import {
-  API_BASE_URL,
   getToken,
   setToken,
   clearToken,
@@ -15,9 +22,10 @@ import {
   ChangePasswordRequest,
   PasswordResetRequest,
 } from "@/types/user";
+
 /**
- * Retrieves the current user from the backend.
- * Uses fetchWithAuth to ensure credentials are sent.
+ * Retrieves the current user details.
+ * Endpoint: GET /api/auth/me
  */
 export async function getCurrentUser(): Promise<UserResponse> {
   const token = getToken();
@@ -30,14 +38,16 @@ export async function getCurrentUser(): Promise<UserResponse> {
       "Fetching current user with token:",
       token ? "Token present" : "No token"
     );
-    const response = await fetchWithAuth(`${API_BASE_URL}/auth/me`, {
-      method: "GET",
-    });
-    // handleResponse will throw if not OK
+    const response = await fetchWithAuth("/api/auth/me", { method: "GET" });
     const userData: UserResponse = await handleResponse<UserResponse>(response);
     console.log("Successfully retrieved user data");
     return userData;
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     console.error("Error getting current user:", error);
     if (
       error instanceof Error &&
@@ -53,22 +63,18 @@ export async function getCurrentUser(): Promise<UserResponse> {
 
 /**
  * Logs in a user with the given username and password.
- * Uses fetchWithAuth for consistent credential handling.
+ * Endpoint: POST /api/auth/login
  */
 export async function login(
   username: string,
   password: string
 ): Promise<LoginResponse> {
-  if (!API_BASE_URL) {
-    throw new Error("API_BASE_URL is not configured.");
-  }
   try {
     console.log("Attempting login with username:", username);
-    const response = await fetchWithAuth(`${API_BASE_URL}/auth/login`, {
+    const response = await fetchWithAuth("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     });
-    // Process response via handleResponse to catch errors.
     const loginData: LoginResponse = await handleResponse<LoginResponse>(
       response
     );
@@ -84,6 +90,11 @@ export async function login(
     }
     return loginData;
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     if (error instanceof Error) {
       console.error("Error in login:", error.message);
     } else {
@@ -98,12 +109,13 @@ export async function login(
 
 /**
  * Registers a new user.
+ * Endpoint: POST /api/auth/register
  */
 export async function register(
   registrationRequest: RegistrationRequest
 ): Promise<LoginResponse> {
   try {
-    const response = await fetchWithAuth(`${API_BASE_URL}/auth/register`, {
+    const response = await fetchWithAuth("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(registrationRequest),
     });
@@ -111,6 +123,11 @@ export async function register(
     setToken(data.token);
     return data;
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     console.error("Error in register:", error);
     throw new Error("Failed to register user. Please try again.");
   }
@@ -118,6 +135,7 @@ export async function register(
 
 /**
  * Changes the user's password.
+ * Endpoint: POST /api/auth/change-password
  */
 export async function changePassword(
   changePasswordRequest: ChangePasswordRequest
@@ -127,16 +145,18 @@ export async function changePassword(
     throw new Error("User is not authenticated.");
   }
   try {
-    const response = await fetchWithAuth(
-      `${API_BASE_URL}/auth/change-password`,
-      {
-        method: "POST",
-        body: JSON.stringify(changePasswordRequest),
-      }
-    );
+    const response = await fetchWithAuth("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(changePasswordRequest),
+    });
     const data = await handleResponse<{ message: string }>(response);
     return data.message;
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     console.error("Error in changePassword:", error);
     throw new Error("Failed to change password. Please try again.");
   }
@@ -144,39 +164,73 @@ export async function changePassword(
 
 /**
  * Resets the user's password.
+ * Endpoint: POST /api/auth/reset-password
  */
 export async function resetPassword(
   passwordResetRequest: PasswordResetRequest
 ): Promise<string> {
   try {
-    const response = await fetchWithAuth(
-      `${API_BASE_URL}/auth/reset-password`,
-      {
-        method: "POST",
-        body: JSON.stringify(passwordResetRequest),
-      }
-    );
+    const response = await fetchWithAuth("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(passwordResetRequest),
+    });
     const data = await handleResponse<{ message: string }>(response);
     return data.message;
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     console.error("Error in resetPassword:", error);
     throw new Error("Failed to reset password. Please try again.");
   }
 }
 
 /**
+ * Sends a verification code for two-factor authentication.
+ * Endpoint: POST /api/auth/send-verification-code
+ */
+export async function sendVerificationCode(): Promise<{ message: string }> {
+  try {
+    const response = await fetchWithAuth("/api/auth/send-verification-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = await handleResponse<{ message: string }>(response);
+    return data;
+  } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
+    console.error("Error in sendVerificationCode:", error);
+    throw new Error(
+      "Failed to send verification code. Please try again later."
+    );
+  }
+}
+
+/**
  * Logs out the user.
+ * Endpoint: POST /api/auth/logout
  */
 export async function logout(): Promise<void> {
   const token = getToken();
   try {
-    const response = await fetchWithAuth(`${API_BASE_URL}/auth/logout`, {
+    const response = await fetchWithAuth("/api/auth/logout", {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     await handleResponse(response);
     clearToken();
   } catch (error: unknown) {
+    console.log(error);
+    if (error instanceof Error && error.message.includes("429")) {
+      console.error("HTTP Error 429: Too Many Requests.");
+      throw new Error("Too many requests. Please try again later.");
+    }
     console.error("Error in logout:", error);
     throw new Error("Failed to logout. Please try again.");
   }

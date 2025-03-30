@@ -1,44 +1,50 @@
+// src/api/dashboard.ts
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
 import { HistoricalDataResponse } from "@/types/historicalData";
-import { PerformanceDTO } from "@/types/performance";
-import { getToken, handleResponse, API_BASE_URL } from "./apiHelper";
+import { fetchWithAuth, handleResponse } from "./apiHelper";
 
+/**
+ * Fetches the latest sensor metrics for a given analysisId.
+ *
+ * Endpoint: GET /api/dashboard/latest/:analysisId
+ */
 export async function getLatestMetrics(
   analysisId: number
 ): Promise<SensorMetricsDTO> {
-  const token = getToken();
-  const response = await fetch(
-    `${API_BASE_URL}/dashboard/latest/${analysisId}`,
-    {
-      headers: { Authorization: token ? `Bearer ${token}` : "" },
-    }
-  );
-  return handleResponse<SensorMetricsDTO>(response);
+  try {
+    const response = await fetchWithAuth(
+      `/api/dashboard/latest/${analysisId}`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    );
+    return await handleResponse<SensorMetricsDTO>(response);
+  } catch (error) {
+    console.error("Error in getLatestMetrics:", error);
+    throw error;
+  }
 }
 
+/**
+ * Fetches the historical sensor metrics for a given analysisId.
+ *
+ * Endpoint: GET /api/dashboard/historical/:analysisId
+ */
 export async function getHistoricalData(
   analysisId: number
 ): Promise<HistoricalDataResponse> {
-  const token = getToken();
-  const response = await fetch(
-    `${API_BASE_URL}/dashboard/historical/${analysisId}`,
-    {
-      headers: { Authorization: token ? `Bearer ${token}` : "" },
-    }
-  );
-  return handleResponse<HistoricalDataResponse>(response);
-}
-
-export async function getPerformanceData(
-  startDate: string,
-  endDate: string
-): Promise<PerformanceDTO[]> {
-  const token = getToken();
-  const url = `${API_BASE_URL}/performance?startDate=${encodeURIComponent(
-    startDate
-  )}&endDate=${encodeURIComponent(endDate)}`;
-  const response = await fetch(url, {
-    headers: { Authorization: token ? `Bearer ${token}` : "" },
-  });
-  return handleResponse<PerformanceDTO[]>(response);
+  try {
+    const response = await fetchWithAuth(
+      `/api/dashboard/historical/${analysisId}`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    );
+    return await handleResponse<HistoricalDataResponse>(response);
+  } catch (error) {
+    console.error("Error in getHistoricalData:", error);
+    throw error;
+  }
 }

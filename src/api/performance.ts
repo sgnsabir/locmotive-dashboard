@@ -1,57 +1,33 @@
 // src/api/performance.ts
+import { fetchWithAuth, handleResponse } from "@/api/apiHelper";
 import { PerformanceDTO } from "@/types/performance";
-import { getToken, handleResponse, API_BASE_URL } from "./apiHelper";
 
 /**
  * Fetch performance data for the given date range.
- * @param startDate ISO formatted start date
- * @param endDate ISO formatted end date
- * @returns A promise that resolves to an array of PerformanceDTO
+ * @param startDate ISO formatted start date.
+ * @param endDate ISO formatted end date.
+ * @returns A promise that resolves to an array of PerformanceDTO.
  */
 export async function getPerformanceData(
   startDate: string,
   endDate: string
 ): Promise<PerformanceDTO[]> {
-  const token = getToken();
-  const url = `${API_BASE_URL}/performance?startDate=${encodeURIComponent(
-    startDate
-  )}&endDate=${encodeURIComponent(endDate)}`;
-
-  console.debug("[getPerformanceData] Request URL:", url);
-  console.debug(
-    "[getPerformanceData] Using token:",
-    token ? "Present" : "Not present"
-  );
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: process.env.NODE_ENV === "production" ? "include" : "omit",
+    // Construct relative URL with encoded query parameters.
+    const url = `/api/performance?startDate=${encodeURIComponent(
+      startDate
+    )}&endDate=${encodeURIComponent(endDate)}`;
+
+    // Use fetchWithAuth to attach authorization tokens and include credentials.
+    const response = await fetchWithAuth(url, {
+      method: "GET",
+      credentials: "include",
     });
 
-    console.debug("[getPerformanceData] Response status:", response.status);
-
-    if (!response.ok) {
-      console.error(
-        "[getPerformanceData] Fetch failed with status:",
-        response.status
-      );
-      throw new Error(
-        `Failed to fetch performance data. Status: ${response.status}`
-      );
-    }
-
-    const data = await handleResponse<PerformanceDTO[]>(response);
-    console.debug(
-      "[getPerformanceData] Successfully fetched performance data:",
-      data
-    );
-    return data;
+    // Process and return the response.
+    return await handleResponse<PerformanceDTO[]>(response);
   } catch (error) {
-    console.error("[getPerformanceData] Error during fetch:", error);
+    console.error("Error fetching performance data:", error);
     throw error;
   }
 }

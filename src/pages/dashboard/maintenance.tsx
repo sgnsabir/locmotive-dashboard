@@ -1,3 +1,5 @@
+// src/pages/maintenance.tsx
+
 import React, { FC, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useSelector } from "react-redux";
@@ -20,7 +22,7 @@ const Maintenance: FC = () => {
   const analysisId =
     typeof analysisIdQuery === "string" ? parseInt(analysisIdQuery, 10) : 1;
 
-  // Derive alertEmail from the logged-in user's profile if available,
+  // Get alertEmail from the logged-in user's profile if available,
   // otherwise use the environment variable or fallback default.
   const user = useSelector((state: RootState) => state.auth.user);
   const alertEmail =
@@ -34,7 +36,7 @@ const Maintenance: FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Fetch maintenance schedule from backend
+  // Fetch the maintenance schedule using the relative endpoint.
   useEffect(() => {
     async function fetchSchedule() {
       try {
@@ -48,7 +50,7 @@ const Maintenance: FC = () => {
     fetchSchedule();
   }, []);
 
-  // Fetch predictive maintenance data using dynamic analysisId and derived alertEmail
+  // Fetch predictive maintenance data using dynamic analysisId and alertEmail.
   useEffect(() => {
     async function fetchPredictive() {
       setLoading(true);
@@ -78,7 +80,7 @@ const Maintenance: FC = () => {
         <MaintenanceSchedule items={maintenanceSchedule} />
       </section>
 
-      {/* Predictive Maintenance Analytics Section */}
+      {/* Predictive Analytics Section */}
       <section className="bg-white p-4 rounded-md shadow">
         <h2 className="text-xl font-semibold mb-2">Predictive Analytics</h2>
         {loading && <p>Loading predictive maintenance data...</p>}

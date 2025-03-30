@@ -1,6 +1,5 @@
-// src/components/TwoFactorAuth.tsx
 import React, { FC, useState } from "react";
-import { API_BASE_URL, getToken } from "@/api/apiHelper";
+import { getToken } from "@/api/apiHelper";
 
 interface TwoFactorAuthProps {
   enabled: boolean;
@@ -19,18 +18,18 @@ const TwoFactorAuth: FC<TwoFactorAuthProps> = ({ enabled, onToggle }) => {
     setSuccessMessage("");
     try {
       const token = getToken();
-      const response = await fetch(
-        `${API_BASE_URL}/auth/send-verification-code`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: "include",
-        }
-      );
+      const response = await fetch("/api/auth/send-verification-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
       if (!response.ok) {
+        if (response.status === 429) {
+          // Optionally, implement retry logic here.
+        }
         const errorData = await response.json();
         throw new Error(
           errorData.message || "Failed to send verification code"

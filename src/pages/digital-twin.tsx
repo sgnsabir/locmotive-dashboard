@@ -1,9 +1,12 @@
-//src/pages/digital-twin.tsx
 import React, { useEffect, useState } from "react";
 import Head from "next/head";
 import { VirtualAssetDTO } from "@/types/digitalTwin";
+import {
+  getDigitalTwinState,
+  subscribeDigitalTwinUpdates,
+} from "@/api/digitalTwin";
 
-// In a real application, assetId would be dynamically determined (e.g., from router or user input).
+// In a real application, assetId should be dynamically determined (e.g., via router or user input)
 const assetId = 1;
 
 const DigitalTwinPage: React.FC = () => {
@@ -11,16 +14,10 @@ const DigitalTwinPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Immediately load the current digital twin state once on mount (optional).
-    const fetchTwinState = async () => {
+    // Fetch the current digital twin state using our API helper
+    const fetchTwin = async () => {
       try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/digital-twin/${assetId}`
-        );
-        if (!response.ok) {
-          throw new Error(`Failed to fetch digital twin: ${response.status}`);
-        }
-        const data: VirtualAssetDTO = await response.json();
+        const data = await getDigitalTwinState(assetId);
         setDigitalTwin(data);
       } catch (err) {
         if (err instanceof Error) {
@@ -30,30 +27,22 @@ const DigitalTwinPage: React.FC = () => {
         }
       }
     };
-    fetchTwinState();
 
-    // SSE stream for real-time digital twin updates:
-    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/digital-twin/stream/${assetId}`;
-    const eventSource = new EventSource(url);
+    fetchTwin();
 
+    // Subscribe to real-time updates using SSE
+    const eventSource = subscribeDigitalTwinUpdates(assetId);
     eventSource.onmessage = (event) => {
       try {
         const updatedTwin: VirtualAssetDTO = JSON.parse(event.data);
         setDigitalTwin(updatedTwin);
       } catch (err) {
-        console.error("Error parsing Digital Twin SSE data:", err);
+        console.error("Error parsing digital twin SSE data:", err);
         setError("Failed to parse digital twin SSE updates.");
       }
     };
 
-    eventSource.onerror = (evt) => {
-      console.error("Digital Twin SSE error:", evt);
-      setError("Error receiving digital twin updates.");
-      // Optionally close the stream on error
-      // eventSource.close();
-    };
-
-    // Cleanup to avoid memory leaks
+    // Cleanup the EventSource on component unmount
     return () => {
       eventSource.close();
     };

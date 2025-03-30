@@ -2,13 +2,12 @@
 import React, { FC, useMemo } from "react";
 import BasicLineChart from "@/components/charts/BasicLineChart";
 import useSWR from "swr";
-import { API_BASE_URL, getToken, handleResponse } from "@/api/apiHelper";
+import { getToken, handleResponse } from "@/api/apiHelper";
 import { formatDate } from "@/utils/dateTime";
 import { HistoricalTrendsResponse } from "@/types/historicalData";
 import { SensorMetricsDTO } from "@/types/sensorMetrics";
 
 interface HistoricalTrendsProps {
-  // Dynamic analysisId provided from parent (e.g. via Redux, router query, or settings)
   analysisId?: number;
 }
 
@@ -25,28 +24,26 @@ const fetcher = async <T,>(url: string): Promise<T> => {
 };
 
 const HistoricalTrends: FC<HistoricalTrendsProps> = ({ analysisId = 1 }) => {
-  // Fetch latest metrics using the dynamic analysisId prop.
+  // Use relative endpoints for latest metrics and historical data
   const {
     data: latestMetrics,
     error: latestError,
     isValidating: latestLoading,
-  } = useSWR<SensorMetricsDTO>(
-    `${API_BASE_URL}/dashboard/latest/${analysisId}`,
-    fetcher,
-    { refreshInterval: 60000 }
-  );
+  } = useSWR<SensorMetricsDTO>(`/api/dashboard/latest/${analysisId}`, fetcher, {
+    refreshInterval: 60000,
+  });
 
-  // Use the provided analysisId directly for fetching historical trends.
-  const historicalEndpoint = `${API_BASE_URL}/dashboard/historical/${analysisId}`;
   const {
     data: historicalData,
     error: historicalError,
     isValidating: historicalLoading,
-  } = useSWR<HistoricalTrendsResponse>(historicalEndpoint, fetcher, {
-    refreshInterval: 60000,
-  });
+  } = useSWR<HistoricalTrendsResponse>(
+    `/api/dashboard/historical/${analysisId}`,
+    fetcher,
+    { refreshInterval: 60000 }
+  );
 
-  // Map the historical trends into the format expected by the chart.
+  // Transform the historical data into chart-friendly format
   const trendData = useMemo(() => {
     if (!historicalData || !historicalData.metricsHistory) return [];
     return historicalData.metricsHistory.map((record) => ({
